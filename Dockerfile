@@ -1,37 +1,27 @@
-# This Dockerfile uses `serve` npm package to serve the static files with node process.
-# You can find the Dockerfile for nginx in the following link:
-# https://github.com/refinedev/dockerfiles/blob/main/vite/Dockerfile.nginx
-FROM refinedev/node:18 AS base
-
-FROM base as deps
-
-COPY package.json yarn.lock* package-lock.json* pnpm-lock.yaml* .npmrc* ./
-
-RUN \
-  if [ -f yarn.lock ]; then yarn --frozen-lockfile; \
-  elif [ -f package-lock.json ]; then npm ci; \
-  elif [ -f pnpm-lock.yaml ]; then yarn global add pnpm && pnpm i --frozen-lockfile; \
-  else echo "Lockfile not found." && exit 1; \
-  fi
-
-FROM base as builder
-
-ENV NODE_ENV production
-
-COPY --from=deps /app/refine/node_modules ./node_modules
-
+# Stage 1: Build the Vite Frontend
+FROM node:18-alpine AS builder
+WORKDIR /app
+COPY package*.json ./
+RUN npm install
 COPY . .
-
 RUN npm run build
 
-FROM base as runner
+# Stage 2: Build the Express Backend and serve
+FROM node:18-alpine
+WORKDIR /app
 
-ENV NODE_ENV production
+# Copy Backend package and install production dependencies
+COPY server/package*.json ./
+RUN npm install --production
 
-RUN npm install -g serve
+# Copy backend source code
+COPY server/ ./
 
-COPY --from=builder /app/refine/dist ./
+# Copy built frontend from Stage 1
+COPY --from=builder /app/dist ./dist
 
-USER refine
+# Expose the API port
+EXPOSE 3001
 
-CMD ["serve"]
+# Start the server
+CMD ["node", "index.js"]
