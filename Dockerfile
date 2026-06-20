@@ -2,7 +2,7 @@
 FROM node:18-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
-RUN npm install
+RUN npm install --legacy-peer-deps
 COPY . .
 RUN npm run build
 
@@ -12,7 +12,7 @@ WORKDIR /app
 
 # Copy Backend package and install production dependencies
 COPY server/package*.json ./
-RUN npm install --production
+RUN npm install --production --legacy-peer-deps
 
 # Copy backend source code
 COPY server/ ./
