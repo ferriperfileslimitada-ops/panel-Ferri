@@ -126,9 +126,8 @@ app.post('/api/send-quote', async (req, res) => {
   }
 });
 
-});
-
 // ─── ENDPOINT: Nuevo Despacho (Cotización Pagada) ───────────────────────────
+
 app.post('/api/despacho-create', async (req, res) => {
   const { clienteEmail, clienteName, clienteNit, quoteId, quoteNumero, items, subtotal, iva, total, date, despachoId } = req.body;
 
