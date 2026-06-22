@@ -127,7 +127,7 @@ app.post('/api/send-quote', async (req, res) => {
 });
 
 // React Router Fallback
-app.get('*', (req, res) => {
+app.get(/.*/, (req, res) => {
   res.sendFile(path.join(__dirname, '../dist', 'index.html'));
 });
 
