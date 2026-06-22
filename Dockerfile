@@ -11,11 +11,11 @@ FROM node:22
 WORKDIR /app
 
 # Copy Backend package and install production dependencies
-COPY server/package*.json ./
-RUN npm install --production --legacy-peer-deps
+COPY server/package*.json ./server/
+RUN cd server && npm install --production --legacy-peer-deps
 
 # Copy backend source code
-COPY server/ ./
+COPY server/ ./server/
 
 # Copy built frontend from Stage 1
 COPY --from=builder /app/dist ./dist
@@ -24,4 +24,5 @@ COPY --from=builder /app/dist ./dist
 EXPOSE 3001
 
 # Start the server
-CMD ["node", "index.js"]
+ENV PORT=3001
+CMD ["node", "server/index.js"]
