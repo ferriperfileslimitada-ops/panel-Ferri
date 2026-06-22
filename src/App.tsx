@@ -21,6 +21,8 @@ import { CotizacionesList } from "@/pages/cotizaciones/list";
 import { CotizacionCreate } from "@/pages/cotizaciones/create";
 import { CotizacionShow } from "@/pages/cotizaciones/show";
 import { CotizacionEdit } from "@/pages/cotizaciones/edit";
+import { Despachos } from "@/pages/despachos";
+import { Analitica } from "@/pages/analitica";
 import { Toaster } from "@/components/ui/sonner";
 
 function App() {
@@ -96,8 +98,8 @@ function App() {
                   <Route path="edit/:id" element={<CotizacionEdit />} />
                   <Route path="show/:id" element={<CotizacionShow />} />
                 </Route>
-                <Route path="/despachos" element={<div>Despachos (En construcción)</div>} />
-                <Route path="/analitica" element={<div>Analítica (En construcción)</div>} />
+                <Route path="/despachos" element={<Despachos />} />
+                <Route path="/analitica" element={<Analitica />} />
                 <Route path="*" element={<div>Página no encontrada</div>} />
               </Route>
               <Route
