@@ -1,5 +1,5 @@
 # Stage 1: Build the Vite Frontend
-FROM node:18 AS builder
+FROM node:22 AS builder
 WORKDIR /app
 COPY package*.json ./
 RUN npm install --legacy-peer-deps
@@ -7,7 +7,7 @@ COPY . .
 RUN npm run build
 
 # Stage 2: Build the Express Backend and serve
-FROM node:18
+FROM node:22
 WORKDIR /app
 
 # Copy Backend package and install production dependencies
