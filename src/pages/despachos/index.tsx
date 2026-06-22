@@ -23,7 +23,7 @@ export const Despachos = () => {
     pagination: { pageSize: 200 },
     sorters: [{ field: "created_at", order: "desc" }],
     meta: {
-      select: "*, cotizacion_id(numero, total, created_at, items), cliente_id(name, email, identificacion)",
+      select: "*, cotizacion_id(numero, total, created_at), cliente_id(name, email, identification)",
     },
   });
 
@@ -122,8 +122,8 @@ export const Despachos = () => {
                             <User className="h-3 w-3 shrink-0" />
                             <span className="truncate font-medium text-foreground">{cli?.name || "—"}</span>
                           </div>
-                          {cli?.identificacion && (
-                            <div className="text-xs text-muted-foreground pl-5">NIT: {cli.identificacion}</div>
+                          {cli?.identification && (
+                            <div className="text-xs text-muted-foreground pl-5">NIT: {cli.identification}</div>
                           )}
                           <div className="flex items-center gap-2 text-xs text-muted-foreground">
                             <DollarSign className="h-3 w-3 shrink-0" />

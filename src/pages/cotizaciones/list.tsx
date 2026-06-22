@@ -13,7 +13,7 @@ export const CotizacionesList = () => {
     pagination: { pageSize: 50 },
     sorters: { initial: [{ field: "created_at", order: "desc" }] },
     meta: {
-      select: "*, cliente_id(id, name, email, identificacion)",
+      select: "*, cliente_id(id, name, email, identification)",
     }
   });
 
@@ -55,7 +55,7 @@ export const CotizacionesList = () => {
                 body: JSON.stringify({
                   clienteEmail: c.cliente_id?.email || "",
                   clienteName: c.cliente_id?.name || "Cliente",
-                  clienteNit: c.cliente_id?.identificacion || "",
+                  clienteNit: c.cliente_id?.identification || "",
                   quoteId: c.id,
                   quoteNumero: c.numero,
                   items: c.items || [],
