@@ -232,13 +232,23 @@ app.post('/api/despacho-create', async (req, res) => {
   </div>`;
 
   try {
+    // 1. Contabilidad (Facturación SIIGO)
     await transporter.sendMail({
       from: '"Ferriperfiles Limitada" <ferriperfileslimitada@gmail.com>',
-      to: 'Ferriperfiles@gmail.com',
-      subject: `🚀 NUEVO PEDIDO #${quoteNumero || quoteId} — ${clienteName} — Acción requerida en SIIGO`,
-      html: htmlDespachos,
+      to: 'ferriperfiles@gmail.com',
+      subject: `🚀 NUEVO PEDIDO #${quoteNumero || quoteId} — Acción requerida en SIIGO`,
+      html: htmlDespachos, // Reusamos el html que ya tiene los detalles de siigo
     });
 
+    // 2. Despachos
+    await transporter.sendMail({
+      from: '"Ferriperfiles Limitada" <ferriperfileslimitada@gmail.com>',
+      to: 'ferriperfileslimitada@gmail.com',
+      subject: `📦 ALISTAMIENTO DE PEDIDO #${quoteNumero || quoteId} — ${clienteName}`,
+      html: htmlDespachos, // Enviamos los detalles del pedido también
+    });
+
+    // 3. Cliente
     await transporter.sendMail({
       from: '"Ferriperfiles Limitada" <ferriperfileslimitada@gmail.com>',
       to: clienteEmail,
