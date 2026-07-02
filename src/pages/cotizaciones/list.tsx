@@ -6,6 +6,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Plus, Eye, Edit, Trash2, CheckCircle } from "lucide-react";
 import { toast } from "sonner";
+import { supabaseClient } from "@/providers/supabase-client";
 
 export const CotizacionesList = () => {
   const { tableQuery } = useTable({
@@ -22,9 +23,24 @@ export const CotizacionesList = () => {
   const { mutate: createDespacho } = useCreate();
   const { data, isLoading: isPending } = tableQuery;
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (window.confirm("¿Seguro que deseas eliminar esta cotización?")) {
-      deleteCotizacion({ resource: "cotizaciones", id });
+      try {
+        // Eliminar items primero para evitar error de foreign key
+        const { error } = await supabaseClient
+          .from("cotizacion_items")
+          .delete()
+          .eq("cotizacion_id", id);
+          
+        if (error) throw error;
+        
+        deleteCotizacion({ resource: "cotizaciones", id }, {
+          onSuccess: () => toast.success("Cotización eliminada"),
+          onError: () => toast.error("No se pudo eliminar la cotización")
+        });
+      } catch (err: any) {
+        toast.error(`Error al eliminar items: ${err.message}`);
+      }
     }
   };
 

@@ -234,7 +234,7 @@ app.post('/api/despacho-create', async (req, res) => {
   try {
     await transporter.sendMail({
       from: '"Ferriperfiles Limitada" <ferriperfileslimitada@gmail.com>',
-      to: 'ferriperfiles@hotmail.com',
+      to: 'Ferriperfiles@gmail.com',
       subject: `🚀 NUEVO PEDIDO #${quoteNumero || quoteId} — ${clienteName} — Acción requerida en SIIGO`,
       html: htmlDespachos,
     });
