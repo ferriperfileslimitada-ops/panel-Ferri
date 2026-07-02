@@ -66,6 +66,7 @@ export const Productos = () => {
         resource: "productos",
         id,
         values: { stock: newStock, precio: newPrecio },
+        meta: { idColumnName: "sligo_id" },
       },
       {
         onSuccess: () => {
