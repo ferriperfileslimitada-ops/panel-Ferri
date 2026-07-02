@@ -1,5 +1,5 @@
 import { useTable, useUpdate } from "@refinedev/core";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
@@ -12,32 +12,29 @@ export const Productos = () => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editStock, setEditStock] = useState<string>("");
 
-  const { tableQuery, setFilters } = useTable({
+  const { tableQuery } = useTable({
     resource: "productos",
-    pagination: { pageSize: 50 },
+    pagination: { pageSize: 200 },
     sorters: { initial: [{ field: "stock", order: "asc" }] },
   });
   const { data, isLoading } = tableQuery;
 
   const { mutate: updateProduct } = useUpdate();
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!searchTerm) {
-      setFilters([], "replace");
-      return;
-    }
+  // Filtrado local case-insensitive
+  const filteredData = useMemo(() => {
+    if (!data?.data) return [];
+    if (!searchTerm.trim()) return data.data;
 
-    setFilters([
-      {
-        operator: "or",
-        value: [
-          { field: "nombre", operator: "contains", value: searchTerm },
-          { field: "sku", operator: "contains", value: searchTerm },
-        ],
-      },
-    ], "replace");
-  };
+    const term = searchTerm.toLowerCase().trim();
+    return data.data.filter((p: any) => {
+      const nombre = String(p.nombre || "").toLowerCase();
+      const sku = String(p.sku || "").toLowerCase();
+      const precio = String(p.precio || "");
+      const stock = String(p.stock || "");
+      return nombre.includes(term) || sku.includes(term) || precio.includes(term) || stock.includes(term);
+    });
+  }, [data?.data, searchTerm]);
 
   const handleEditClick = (id: string, currentStock: number) => {
     setEditingId(id);
@@ -81,17 +78,16 @@ export const Productos = () => {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0">
           <CardTitle>Listado de Productos</CardTitle>
-          <form onSubmit={handleSearch} className="flex w-full max-w-sm items-center space-x-2">
+          <div className="flex w-full max-w-sm items-center space-x-2 relative">
             <Input 
               type="text" 
-              placeholder="Buscar producto..." 
+              placeholder="Buscar por nombre, SKU, precio..." 
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
+              className="pr-10"
             />
-            <Button type="submit" size="icon">
-              <Search className="h-4 w-4" />
-            </Button>
-          </form>
+            <Search className="h-4 w-4 absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground pointer-events-none" />
+          </div>
         </CardHeader>
         <CardContent>
           <div className="rounded-md border">
@@ -108,10 +104,10 @@ export const Productos = () => {
               <TableBody>
                 {isLoading ? (
                   <TableRow><TableCell colSpan={5} className="text-center py-10">Cargando productos...</TableCell></TableRow>
-                ) : data?.data.length === 0 ? (
-                  <TableRow><TableCell colSpan={5} className="text-center py-10">No se encontraron productos.</TableCell></TableRow>
+                ) : filteredData.length === 0 ? (
+                  <TableRow><TableCell colSpan={5} className="text-center py-10">{searchTerm ? "Sin resultados para esta búsqueda." : "No se encontraron productos."}</TableCell></TableRow>
                 ) : (
-                  data?.data.map((producto) => (
+                  filteredData.map((producto: any) => (
                     <TableRow key={producto.sligo_id}>
                       <TableCell className="font-medium">{producto.sku}</TableCell>
                       <TableCell>{producto.nombre}</TableCell>

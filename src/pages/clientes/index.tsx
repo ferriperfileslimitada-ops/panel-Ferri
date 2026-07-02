@@ -1,5 +1,5 @@
 import { useTable } from "@refinedev/core";
-import { useState, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
@@ -9,48 +9,32 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 
 export const Clientes = () => {
   const [searchTerm, setSearchTerm] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [selectedCliente, setSelectedCliente] = useState<any | null>(null);
 
-  const { tableQuery, setFilters } = useTable({
+  const { tableQuery } = useTable({
     resource: "clientes",
-    pagination: { pageSize: 50 },
+    pagination: { pageSize: 200 },
     sorters: { initial: [{ field: "name", order: "asc" }] },
   });
 
   const { data, isLoading: isPending } = tableQuery;
 
-  // Debounce for search
-  useEffect(() => {
-    const handler = setTimeout(() => {
-      setDebouncedSearch(searchTerm);
-    }, 300);
+  // Filtrado local case-insensitive
+  const filteredData = useMemo(() => {
+    if (!data?.data) return [];
+    if (!searchTerm.trim()) return data.data;
 
-    return () => {
-      clearTimeout(handler);
-    };
-  }, [searchTerm]);
-
-  // Apply filters when debounced search changes
-  useEffect(() => {
-    if (!debouncedSearch) {
-      setFilters([], "replace");
-      return;
-    }
-
-    setFilters([
-      {
-        operator: "or",
-        value: [
-          { field: "name", operator: "contains", value: debouncedSearch },
-          { field: "identification", operator: "contains", value: debouncedSearch },
-          { field: "Telefono", operator: "contains", value: debouncedSearch },
-          { field: "email", operator: "contains", value: debouncedSearch },
-          { field: "city", operator: "contains", value: debouncedSearch }
-        ],
-      },
-    ], "replace");
-  }, [debouncedSearch, setFilters]);
+    const term = searchTerm.toLowerCase().trim();
+    return data.data.filter((c: any) => {
+      const name = String(c.name || "").toLowerCase();
+      const identification = String(c.identification || "").toLowerCase();
+      const email = String(c.email || "").toLowerCase();
+      const city = String(c.city || "").toLowerCase();
+      const telefono = String(c.Telefono || c.telefono || "").toLowerCase();
+      const address = String(c.address || "").toLowerCase();
+      return name.includes(term) || identification.includes(term) || email.includes(term) || city.includes(term) || telefono.includes(term) || address.includes(term);
+    });
+  }, [data?.data, searchTerm]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -65,7 +49,7 @@ export const Clientes = () => {
           <div className="flex w-full max-w-sm items-center space-x-2 relative">
             <Input 
               type="text" 
-              placeholder="Escribe para buscar (nombre, NIT, email...)" 
+              placeholder="Buscar por nombre, NIT, email, ciudad..." 
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="pr-10"
@@ -89,10 +73,10 @@ export const Clientes = () => {
               <TableBody>
                 {isPending ? (
                   <TableRow><TableCell colSpan={6} className="text-center py-10">Cargando clientes...</TableCell></TableRow>
-                ) : data?.data.length === 0 ? (
-                  <TableRow><TableCell colSpan={6} className="text-center py-10">No se encontraron clientes.</TableCell></TableRow>
+                ) : filteredData.length === 0 ? (
+                  <TableRow><TableCell colSpan={6} className="text-center py-10">{searchTerm ? "Sin resultados para esta búsqueda." : "No se encontraron clientes."}</TableCell></TableRow>
                 ) : (
-                  data?.data.map((cliente: any) => (
+                  filteredData.map((cliente: any) => (
                     <TableRow key={cliente.id}>
                       <TableCell className="font-medium">{cliente.identification}</TableCell>
                       <TableCell>{cliente.name}</TableCell>

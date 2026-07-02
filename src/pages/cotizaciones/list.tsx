@@ -1,17 +1,21 @@
 import { useTable, useDelete, useUpdate, useCreate } from "@refinedev/core";
 import { Link } from "react-router";
+import { useState, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Eye, Edit, Trash2, CheckCircle } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Plus, Eye, Edit, Trash2, CheckCircle, Search } from "lucide-react";
 import { toast } from "sonner";
 import { supabaseClient } from "@/providers/supabase-client";
 
 export const CotizacionesList = () => {
+  const [searchTerm, setSearchTerm] = useState("");
+
   const { tableQuery } = useTable({
     resource: "cotizaciones",
-    pagination: { pageSize: 50 },
+    pagination: { pageSize: 200 },
     sorters: { initial: [{ field: "created_at", order: "desc" }] },
     meta: {
       select: "*, cliente_id(id, name, email, identification)",
@@ -22,6 +26,22 @@ export const CotizacionesList = () => {
   const { mutate: updateCotizacion } = useUpdate();
   const { mutate: createDespacho } = useCreate();
   const { data, isLoading: isPending } = tableQuery;
+
+  // Filtrado local case-insensitive
+  const filteredData = useMemo(() => {
+    if (!data?.data) return [];
+    if (!searchTerm.trim()) return data.data;
+
+    const term = searchTerm.toLowerCase().trim();
+    return data.data.filter((c: any) => {
+      const numero = String(c.numero || "").toLowerCase();
+      const cliente = String(c.cliente_id?.name || "").toLowerCase();
+      const estado = String(c.estado || "").toLowerCase();
+      const origen = String(c.origen || "").toLowerCase();
+      const total = String(c.total || "");
+      return numero.includes(term) || cliente.includes(term) || estado.includes(term) || origen.includes(term) || total.includes(term);
+    });
+  }, [data?.data, searchTerm]);
 
   const handleDelete = async (id: string) => {
     if (window.confirm("¿Seguro que deseas eliminar esta cotización?")) {
@@ -125,8 +145,18 @@ export const CotizacionesList = () => {
       </div>
 
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0">
           <CardTitle>Listado de Cotizaciones</CardTitle>
+          <div className="flex w-full max-w-sm items-center space-x-2 relative">
+            <Input
+              type="text"
+              placeholder="Buscar por número, cliente, estado..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pr-10"
+            />
+            <Search className="h-4 w-4 absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground pointer-events-none" />
+          </div>
         </CardHeader>
         <CardContent>
           <div className="rounded-md border">
@@ -145,10 +175,10 @@ export const CotizacionesList = () => {
               <TableBody>
                 {isPending ? (
                   <TableRow><TableCell colSpan={7} className="text-center py-10">Cargando...</TableCell></TableRow>
-                ) : data?.data.length === 0 ? (
-                  <TableRow><TableCell colSpan={7} className="text-center py-10">No hay cotizaciones.</TableCell></TableRow>
+                ) : filteredData.length === 0 ? (
+                  <TableRow><TableCell colSpan={7} className="text-center py-10">{searchTerm ? "Sin resultados para esta búsqueda." : "No hay cotizaciones."}</TableCell></TableRow>
                 ) : (
-                  data?.data.map((c) => (
+                  filteredData.map((c: any) => (
                     <TableRow key={c.id} className={c.estado === 'pagada' ? 'bg-green-50 dark:bg-green-950/20' : ''}>
                       <TableCell className="font-medium">#{c.numero}</TableCell>
                       <TableCell>{new Date(c.created_at).toLocaleDateString()}</TableCell>
