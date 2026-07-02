@@ -1,4 +1,4 @@
-import { useTable, useDelete, useUpdate, useCreate } from "@refinedev/core";
+import { useTable } from "@refinedev/core";
 import { Link } from "react-router";
 import { useState, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -22,9 +22,6 @@ export const CotizacionesList = () => {
     }
   });
 
-  const { mutate: deleteCotizacion } = useDelete();
-  const { mutate: updateCotizacion } = useUpdate();
-  const { mutate: createDespacho } = useCreate();
   const { data, isLoading: isPending } = tableQuery;
 
   // Filtrado local case-insensitive
@@ -44,74 +41,107 @@ export const CotizacionesList = () => {
   }, [data?.data, searchTerm]);
 
   const handleDelete = async (id: string) => {
-    if (window.confirm("¿Seguro que deseas eliminar esta cotización?")) {
-      try {
-        // Eliminar items primero para evitar error de foreign key
-        const { error } = await supabaseClient
-          .from("cotizacion_items")
-          .delete()
-          .eq("cotizacion_id", id);
-          
-        if (error) throw error;
-        
-        deleteCotizacion({ resource: "cotizaciones", id }, {
-          onSuccess: () => toast.success("Cotización eliminada"),
-          onError: () => toast.error("No se pudo eliminar la cotización")
-        });
-      } catch (err: any) {
-        toast.error(`Error al eliminar items: ${err.message}`);
-      }
+    if (!window.confirm("¿Seguro que deseas eliminar esta cotización?")) return;
+    try {
+      // 1. Eliminar items (FK constraint)
+      const { error: itemsError } = await supabaseClient
+        .from("cotizacion_items")
+        .delete()
+        .eq("cotizacion_id", id);
+      if (itemsError) throw new Error(`Error eliminando items: ${itemsError.message}`);
+
+      // 2. Eliminar la cotización directamente
+      const { error: cotError } = await supabaseClient
+        .from("cotizaciones")
+        .delete()
+        .eq("id", id);
+      if (cotError) throw new Error(`Error eliminando cotización: ${cotError.message}`);
+
+      // 3. Refrescar tabla
+      tableQuery.refetch();
+      toast.success("Cotización eliminada correctamente");
+    } catch (err: any) {
+      toast.error(err.message || "Error al eliminar");
     }
   };
 
   const handlePagado = async (c: any) => {
     if (!window.confirm(`¿Confirmas que la cotización #${c.numero} ha sido PAGADA?`)) return;
 
-    updateCotizacion({
-      resource: "cotizaciones",
-      id: c.id,
-      values: { estado: "pagada" },
-    }, {
-      onSuccess: () => {
-        createDespacho({
-          resource: "despachos",
-          values: {
-            cotizacion_id: c.id,
-            cliente_id: c.cliente_id?.id,
-            estado: "en_alistamiento",
-          },
-        }, {
-          onSuccess: async (despachoData) => {
-            const despachoId = despachoData?.data?.id;
-            try {
-              const apiUrl = import.meta.env.DEV ? "http://localhost:3001/api/despacho-create" : "/api/despacho-create";
-              await fetch(apiUrl, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  clienteEmail: c.cliente_id?.email || "",
-                  clienteName: c.cliente_id?.name || "Cliente",
-                  clienteNit: c.cliente_id?.identification || "",
-                  quoteId: c.id,
-                  quoteNumero: c.numero,
-                  items: c.items || [],
-                  subtotal: c.subtotal || 0,
-                  iva: c.iva || 0,
-                  total: c.total || 0,
-                  date: new Date().toLocaleDateString("es-CO"),
-                  despachoId,
-                }),
-              });
-              toast.success(`✅ Pedido #${c.numero} marcado como pagado. Correos enviados.`);
-            } catch {
-              toast.error("Despacho creado pero no se pudieron enviar los correos.");
-            }
-          },
-          onError: () => toast.error("Error al crear el despacho."),
+    try {
+      // 1. Marcar cotización como pagada
+      const { error: updateError } = await supabaseClient
+        .from("cotizaciones")
+        .update({ estado: "pagada" })
+        .eq("id", c.id);
+      if (updateError) throw new Error(updateError.message);
+
+      // 2. Obtener items de la cotización para descontar stock
+      const { data: items, error: itemsError } = await supabaseClient
+        .from("cotizacion_items")
+        .select("*, producto:productos(sligo_id, stock)")
+        .eq("cotizacion_id", c.id);
+      if (itemsError) throw new Error(itemsError.message);
+
+      // 3. Descontar stock de cada producto
+      const stockUpdates = (items || []).map(async (item: any) => {
+        const stockActual = item.producto?.stock ?? 0;
+        const nuevaCantidad = item.cantidad || 0;
+        const nuevoStock = Math.max(0, stockActual - nuevaCantidad);
+        return supabaseClient
+          .from("productos")
+          .update({ stock: nuevoStock })
+          .eq("sligo_id", item.producto_id);
+      });
+      await Promise.all(stockUpdates);
+
+      // 4. Crear despacho
+      const { data: despachoData, error: despachoError } = await supabaseClient
+        .from("despachos")
+        .insert({
+          cotizacion_id: c.id,
+          cliente_id: c.cliente_id?.id,
+          estado: "en_alistamiento",
+        })
+        .select()
+        .single();
+      if (despachoError) throw new Error(despachoError.message);
+
+      // 5. Enviar correos
+      try {
+        const apiUrl = import.meta.env.DEV ? "http://localhost:3001/api/despacho-create" : "/api/despacho-create";
+        await fetch(apiUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            clienteEmail: c.cliente_id?.email || "",
+            clienteName: c.cliente_id?.name || "Cliente",
+            clienteNit: c.cliente_id?.identification || "",
+            quoteId: c.id,
+            quoteNumero: c.numero,
+            items: (items || []).map((i: any) => ({
+              nombre: i.nombre || i.producto?.nombre || "",
+              cantidad: i.cantidad,
+              precio_unitario: i.precio_unitario,
+              subtotal: i.subtotal,
+            })),
+            subtotal: c.subtotal || 0,
+            iva: c.iva || 0,
+            total: c.total || 0,
+            date: new Date().toLocaleDateString("es-CO"),
+            despachoId: despachoData?.id,
+          }),
         });
-      },
-      onError: () => toast.error("Error al actualizar la cotización."),
-    });
+      } catch {
+        // correos fallaron pero el resto sí se procesó
+      }
+
+      // 6. Refrescar tabla
+      tableQuery.refetch();
+      toast.success(`✅ Pedido #${c.numero} pagado — stock actualizado y despacho creado`);
+    } catch (err: any) {
+      toast.error(err.message || "Error al procesar el pago");
+    }
   };
 
   const getStatusColor = (status: string) => {
