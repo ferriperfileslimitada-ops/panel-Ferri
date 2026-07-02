@@ -15,7 +15,7 @@ export const CotizacionesList = () => {
 
   const { tableQuery } = useTable({
     resource: "cotizaciones",
-    pagination: { pageSize: 200 },
+    pagination: { pageSize: 10000 },
     sorters: { initial: [{ field: "created_at", order: "desc" }] },
     meta: {
       select: "*, cliente_id(id, name, email, identification)",
@@ -133,11 +133,11 @@ export const CotizacionesList = () => {
   };
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex justify-between items-center">
+    <div className="flex flex-col gap-4 sm:gap-6 px-2 sm:px-0">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Cotizaciones</h1>
-          <p className="text-muted-foreground">Gestiona las cotizaciones de clientes</p>
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Cotizaciones</h1>
+          <p className="text-sm text-muted-foreground">Gestiona las cotizaciones de clientes</p>
         </div>
         <Link to="/cotizaciones/create" className={buttonVariants()}>
           <Plus className="mr-2 h-4 w-4" /> Nueva Cotización
@@ -145,9 +145,9 @@ export const CotizacionesList = () => {
       </div>
 
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0">
-          <CardTitle>Listado de Cotizaciones</CardTitle>
-          <div className="flex w-full max-w-sm items-center space-x-2 relative">
+        <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 space-y-0 pb-4">
+          <CardTitle className="text-base sm:text-lg">Listado de Cotizaciones</CardTitle>
+          <div className="relative w-full sm:max-w-sm">
             <Input
               type="text"
               placeholder="Buscar por número, cliente, estado..."
@@ -158,18 +158,18 @@ export const CotizacionesList = () => {
             <Search className="h-4 w-4 absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground pointer-events-none" />
           </div>
         </CardHeader>
-        <CardContent>
-          <div className="rounded-md border">
-            <Table>
+        <CardContent className="px-2 sm:px-6">
+          <div className="rounded-md border overflow-x-auto">
+            <Table className="min-w-[700px]">
               <TableHeader>
                 <TableRow>
-                  <TableHead>Número</TableHead>
-                  <TableHead>Fecha</TableHead>
-                  <TableHead>Cliente</TableHead>
-                  <TableHead>Origen</TableHead>
-                  <TableHead>Estado</TableHead>
-                  <TableHead className="text-right">Total</TableHead>
-                  <TableHead className="text-center">Acciones</TableHead>
+                  <TableHead className="whitespace-nowrap">Número</TableHead>
+                  <TableHead className="whitespace-nowrap">Fecha</TableHead>
+                  <TableHead className="whitespace-nowrap">Cliente</TableHead>
+                  <TableHead className="whitespace-nowrap hidden sm:table-cell">Origen</TableHead>
+                  <TableHead className="whitespace-nowrap">Estado</TableHead>
+                  <TableHead className="text-right whitespace-nowrap">Total</TableHead>
+                  <TableHead className="text-center whitespace-nowrap">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -180,37 +180,39 @@ export const CotizacionesList = () => {
                 ) : (
                   filteredData.map((c: any) => (
                     <TableRow key={c.id} className={c.estado === 'pagada' ? 'bg-green-50 dark:bg-green-950/20' : ''}>
-                      <TableCell className="font-medium">#{c.numero}</TableCell>
-                      <TableCell>{new Date(c.created_at).toLocaleDateString()}</TableCell>
-                      <TableCell>{c.cliente_id?.name || "Desconocido"}</TableCell>
-                      <TableCell>{c.origen || "-"}</TableCell>
+                      <TableCell className="font-medium text-xs sm:text-sm">#{c.numero}</TableCell>
+                      <TableCell className="text-xs sm:text-sm">{new Date(c.created_at).toLocaleDateString()}</TableCell>
+                      <TableCell className="text-xs sm:text-sm max-w-[150px] truncate">{c.cliente_id?.name || "Desconocido"}</TableCell>
+                      <TableCell className="text-xs sm:text-sm hidden sm:table-cell">{c.origen || "-"}</TableCell>
                       <TableCell>
                         <Badge variant={getStatusColor(c.estado)}>{getStatusLabel(c.estado)}</Badge>
                       </TableCell>
-                      <TableCell className="text-right">
+                      <TableCell className="text-right text-xs sm:text-sm">
                         {new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP' }).format(c.total)}
                       </TableCell>
-                      <TableCell className="text-center space-x-1">
-                        <Link to={`/cotizaciones/show/${c.id}`} className={buttonVariants({ size: "icon", variant: "ghost" })}>
-                          <Eye className="h-4 w-4" />
-                        </Link>
-                        <Link to={`/cotizaciones/edit/${c.id}`} className={buttonVariants({ size: "icon", variant: "ghost" })}>
-                          <Edit className="h-4 w-4" />
-                        </Link>
-                        {c.estado !== 'pagada' && (
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="text-green-600 hover:text-green-700 hover:bg-green-50"
-                            title="Marcar como Pagada"
-                            onClick={() => handlePagado(c)}
-                          >
-                            <CheckCircle className="h-4 w-4" />
+                      <TableCell className="text-center">
+                        <div className="flex items-center justify-center gap-0.5">
+                          <Link to={`/cotizaciones/show/${c.id}`} className={buttonVariants({ size: "icon", variant: "ghost" })}>
+                            <Eye className="h-4 w-4" />
+                          </Link>
+                          <Link to={`/cotizaciones/edit/${c.id}`} className={buttonVariants({ size: "icon", variant: "ghost" })}>
+                            <Edit className="h-4 w-4" />
+                          </Link>
+                          {c.estado !== 'pagada' && (
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="text-green-600 hover:text-green-700 hover:bg-green-50"
+                              title="Marcar como Pagada"
+                              onClick={() => handlePagado(c)}
+                            >
+                              <CheckCircle className="h-4 w-4" />
+                            </Button>
+                          )}
+                          <Button size="icon" variant="ghost" className="text-destructive" onClick={() => handleDelete(c.id as string)}>
+                            <Trash2 className="h-4 w-4" />
                           </Button>
-                        )}
-                        <Button size="icon" variant="ghost" className="text-destructive" onClick={() => handleDelete(c.id as string)}>
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))

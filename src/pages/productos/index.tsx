@@ -19,7 +19,7 @@ export const Productos = () => {
 
   const { tableQuery } = useTable({
     resource: "productos",
-    pagination: { pageSize: 200 },
+    pagination: { pageSize: 10000 },
     sorters: { initial: [{ field: "stock", order: "asc" }] },
   });
   const { data, isLoading } = tableQuery;
@@ -124,11 +124,11 @@ export const Productos = () => {
     new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP" }).format(v);
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex justify-between items-center">
+    <div className="flex flex-col gap-4 sm:gap-6 px-2 sm:px-0">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Catálogo de Productos</h1>
-          <p className="text-muted-foreground">Gestiona el inventario y catálogo sincronizado con Siigo</p>
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Catálogo de Productos</h1>
+          <p className="text-sm text-muted-foreground">Gestiona el inventario y catálogo sincronizado con Siigo</p>
         </div>
         <Button onClick={() => setShowCreate(true)}>
           <Plus className="mr-2 h-4 w-4" /> Nuevo Producto
@@ -136,9 +136,9 @@ export const Productos = () => {
       </div>
 
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0">
-          <CardTitle>Listado de Productos</CardTitle>
-          <div className="flex w-full max-w-sm items-center space-x-2 relative">
+        <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 space-y-0 pb-4">
+          <CardTitle className="text-base sm:text-lg">Listado de Productos</CardTitle>
+          <div className="relative w-full sm:max-w-sm">
             <Input
               type="text"
               placeholder="Buscar por nombre, SKU, precio..."
@@ -149,16 +149,16 @@ export const Productos = () => {
             <Search className="h-4 w-4 absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground pointer-events-none" />
           </div>
         </CardHeader>
-        <CardContent>
-          <div className="rounded-md border">
-            <Table>
+        <CardContent className="px-2 sm:px-6">
+          <div className="rounded-md border overflow-x-auto">
+            <Table className="min-w-[550px]">
               <TableHeader>
                 <TableRow>
-                  <TableHead>SKU</TableHead>
-                  <TableHead>Nombre del Producto</TableHead>
-                  <TableHead className="text-right">Precio</TableHead>
-                  <TableHead className="text-right">Stock</TableHead>
-                  <TableHead className="text-center">Acciones</TableHead>
+                  <TableHead className="whitespace-nowrap">SKU</TableHead>
+                  <TableHead className="whitespace-nowrap">Nombre del Producto</TableHead>
+                  <TableHead className="text-right whitespace-nowrap">Precio</TableHead>
+                  <TableHead className="text-right whitespace-nowrap">Stock</TableHead>
+                  <TableHead className="text-center whitespace-nowrap">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
