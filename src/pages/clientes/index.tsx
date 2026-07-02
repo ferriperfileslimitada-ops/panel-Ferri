@@ -5,12 +5,18 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Search, Eye, Building2, MapPin, Phone, Mail, Hash, Users } from "lucide-react";
+import { Plus, Search, Eye, Building2, MapPin, Phone, Mail, Hash, Users, Save } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { toast } from "sonner";
+import { supabaseClient } from "@/providers/supabase-client";
+import { Label } from "@/components/ui/label";
 
 export const Clientes = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCliente, setSelectedCliente] = useState<any | null>(null);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isCreatingClient, setIsCreatingClient] = useState(false);
+  const [newClientData, setNewClientData] = useState({ name: "", identification: "", email: "", telefono: "", city: "" });
 
   const { tableQuery } = useTable({
     resource: "clientes",
@@ -39,9 +45,73 @@ export const Clientes = () => {
 
   const totalClientes = data?.data?.length || 0;
 
+  const handleCreateClient = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newClientData.name || !newClientData.identification) {
+      toast.error("El Nombre y el NIT son obligatorios.");
+      return;
+    }
+
+    setIsCreatingClient(true);
+    try {
+      let siigoCustomerId = null;
+      // --- Integración Siigo ---
+      try {
+        const siigoApiUrl = import.meta.env.DEV ? "http://localhost:3001/api/siigo/customers" : "/api/siigo/customers";
+        const res = await fetch(siigoApiUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            type: "Customer",
+            person_type: "Company",
+            id_type: "31",
+            identification: newClientData.identification,
+            name: [newClientData.name],
+            contacts: [{
+              first_name: newClientData.name.substring(0, 50),
+              last_name: "",
+              email: newClientData.email || ""
+            }],
+            phones: [{ number: newClientData.telefono || "0000000" }]
+          })
+        });
+        if (res.ok) {
+          const siigoData = await res.json();
+          siigoCustomerId = siigoData.id;
+        } else {
+           console.error("Siigo Client Error:", await res.text());
+           toast.warning("El cliente no se pudo crear en Siigo, pero se guardará localmente.");
+        }
+      } catch (err) {
+        console.error("Siigo Error:", err);
+      }
+      
+      const { error: clientError } = await supabaseClient
+        .from("clientes")
+        .insert({
+          name: newClientData.name,
+          identification: newClientData.identification,
+          email: newClientData.email || null,
+          "Telefono": newClientData.telefono ? Number(newClientData.telefono) : null,
+          city: newClientData.city || null,
+          siigo_id: siigoCustomerId
+        });
+
+      if (clientError) throw clientError;
+      
+      toast.success("Cliente creado exitosamente");
+      setIsCreateModalOpen(false);
+      setNewClientData({ name: "", identification: "", email: "", telefono: "", city: "" });
+      tableQuery.refetch(); 
+    } catch (error: any) {
+      toast.error("Error al crear cliente: " + error.message);
+    } finally {
+      setIsCreatingClient(false);
+    }
+  };
+
   return (
     <div className="flex flex-col gap-4 sm:gap-6 px-2 sm:px-0">
-      {/* Header responsive */}
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Directorio de Clientes</h1>
@@ -49,6 +119,10 @@ export const Clientes = () => {
             {isPending ? "Cargando..." : `${totalClientes} clientes sincronizados con Siigo`}
           </p>
         </div>
+        <Button onClick={() => setIsCreateModalOpen(true)} className="w-full sm:w-auto">
+          <Plus className="mr-2 h-4 w-4" />
+          Nuevo Cliente
+        </Button>
       </div>
 
       <Card>
@@ -123,6 +197,51 @@ export const Clientes = () => {
           </div>
         </CardContent>
       </Card>
+
+      {/* Modal Crear Cliente */}
+      <Dialog open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen}>
+        <DialogContent className="max-w-[95vw] sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-lg sm:text-xl">
+              <Plus className="h-5 w-5 text-primary" />
+              Nuevo Cliente
+            </DialogTitle>
+            <DialogDescription>
+              Crea un cliente aquí y se enviará automáticamente a Siigo.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleCreateClient} className="space-y-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <Label className="text-xs">Razón Social *</Label>
+                <Input required value={newClientData.name} onChange={e => setNewClientData({...newClientData, name: e.target.value})} placeholder="Ej. Inserauto SAS" className="h-8" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">NIT / Cédula *</Label>
+                <Input required value={newClientData.identification} onChange={e => setNewClientData({...newClientData, identification: e.target.value})} placeholder="Ej. 900.699.896" className="h-8" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Teléfono</Label>
+                <Input value={newClientData.telefono} onChange={e => setNewClientData({...newClientData, telefono: e.target.value})} placeholder="Opcional" className="h-8" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Email</Label>
+                <Input type="email" value={newClientData.email} onChange={e => setNewClientData({...newClientData, email: e.target.value})} placeholder="Opcional" className="h-8" />
+              </div>
+              <div className="space-y-1 col-span-2">
+                <Label className="text-xs">Ciudad</Label>
+                <Input value={newClientData.city} onChange={e => setNewClientData({...newClientData, city: e.target.value})} placeholder="Opcional" className="h-8" />
+              </div>
+            </div>
+            <div className="flex justify-end pt-4">
+              <Button type="button" variant="ghost" onClick={() => setIsCreateModalOpen(false)} className="mr-2">Cancelar</Button>
+              <Button type="submit" disabled={isCreatingClient}>
+                {isCreatingClient ? "Guardando..." : "Guardar Cliente"}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       {/* Modal Ficha Cliente - Responsive */}
       <Dialog open={!!selectedCliente} onOpenChange={(open) => !open && setSelectedCliente(null)}>

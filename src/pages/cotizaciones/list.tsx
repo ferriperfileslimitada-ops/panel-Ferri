@@ -41,16 +41,10 @@ export const CotizacionesList = () => {
   }, [data?.data, searchTerm]);
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm("¿Seguro que deseas eliminar esta cotización?")) return;
+    if (!window.confirm("¿Seguro que deseas eliminar esta cotización? Esto eliminará también sus productos y despachos asociados.")) return;
     try {
-      // 1. Eliminar items (FK constraint)
-      const { error: itemsError } = await supabaseClient
-        .from("cotizacion_items")
-        .delete()
-        .eq("cotizacion_id", id);
-      if (itemsError) throw new Error(`Error eliminando items: ${itemsError.message}`);
-
-      // 2. Eliminar la cotización directamente
+      // Al eliminar la cotización, la base de datos (ON DELETE CASCADE) eliminará automáticamente
+      // los cotizacion_items y los despachos asociados para mantener la integridad.
       const { error: cotError } = await supabaseClient
         .from("cotizaciones")
         .delete()

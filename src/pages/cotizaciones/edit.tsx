@@ -39,7 +39,9 @@ export const CotizacionEdit = () => {
   const { list } = useNavigation();
   const { data: user } = useGetIdentity<{ id: string }>();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isCreatingClient, setIsCreatingClient] = useState(false);
   const [isLoadingData, setIsLoadingData] = useState(true);
+  const [quoteSiigoId, setQuoteSiigoId] = useState<string | null>(null);
   
   // Combobox states
   const [openCliente, setOpenCliente] = useState(false);
@@ -113,6 +115,10 @@ export const CotizacionEdit = () => {
 
           if (itemsError) throw itemsError;
 
+          if (cotizacion.siigo_id) {
+            setQuoteSiigoId(cotizacion.siigo_id);
+          }
+
           // Resetear form
           reset({
             cliente_id: cotizacion.cliente_id,
@@ -145,8 +151,82 @@ export const CotizacionEdit = () => {
   const iva = subtotal * 0.19;
   const total = subtotal + iva;
 
+  const handleCreateClient = async () => {
+    const data = getValues();
+    if (!data.nuevo_cliente.name || !data.nuevo_cliente.identification) {
+      toast.error("El Nombre y el NIT son obligatorios para crear un nuevo cliente.");
+      return;
+    }
+
+    setIsCreatingClient(true);
+    try {
+      let siigoCustomerId = null;
+      // --- Integración Siigo (Crear Cliente) ---
+      try {
+        const siigoApiUrl = import.meta.env.DEV ? "http://localhost:3001/api/siigo/customers" : "/api/siigo/customers";
+        const res = await fetch(siigoApiUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            type: "Customer",
+            person_type: "Company",
+            id_type: "31",
+            identification: data.nuevo_cliente.identification,
+            name: [data.nuevo_cliente.name],
+            contacts: [{
+              first_name: data.nuevo_cliente.name.substring(0, 50),
+              last_name: "",
+              email: data.nuevo_cliente.email || ""
+            }],
+            phones: [{ number: data.nuevo_cliente.telefono || "0000000" }]
+          })
+        });
+        if (res.ok) {
+          const siigoData = await res.json();
+          siigoCustomerId = siigoData.id;
+        } else {
+           console.error("Siigo Client Error:", await res.text());
+           toast.warning("El cliente no se pudo crear en Siigo, pero se guardará localmente.");
+        }
+      } catch (err) {
+        console.error("Siigo Error:", err);
+      }
+      // ----------------------------------------
+
+      const { data: newClient, error: clientError } = await supabaseClient
+        .from("clientes")
+        .insert({
+          name: data.nuevo_cliente.name,
+          identification: data.nuevo_cliente.identification,
+          email: data.nuevo_cliente.email || null,
+          "Telefono": data.nuevo_cliente.telefono ? Number(data.nuevo_cliente.telefono) : null,
+          city: data.nuevo_cliente.city || null,
+          siigo_id: siigoCustomerId
+        })
+        .select("id")
+        .single();
+
+      if (clientError) {
+        throw new Error("No se pudo guardar el cliente localmente. " + clientError.message);
+      }
+      
+      toast.success("Cliente creado exitosamente");
+      setValue("cliente_id", newClient.id);
+      setValue("is_new_client", false);
+      clienteQuery.refetch(); 
+    } catch (error: any) {
+      toast.error("Error al crear cliente: " + error.message);
+    } finally {
+      setIsCreatingClient(false);
+    }
+  };
+
   const onFinish = async (data: FormValues) => {
-    if (!data.is_new_client && !data.cliente_id) {
+    if (data.is_new_client) {
+      toast.error("Por favor, guarda el cliente nuevo haciendo clic en 'Guardar Cliente' antes de continuar con la cotización.");
+      return;
+    }
+    if (!data.cliente_id) {
       toast.error("Seleccione un cliente existente o cree uno nuevo.");
       return;
     }
@@ -169,27 +249,41 @@ export const CotizacionEdit = () => {
     try {
       let finalClientId = data.cliente_id;
 
-      // 0. Crear nuevo cliente si corresponde
-      if (data.is_new_client) {
-        const { data: newClient, error: clientError } = await supabaseClient
-          .from("clientes")
-          .insert({
-            name: data.nuevo_cliente.name,
-            identification: data.nuevo_cliente.identification,
-            email: data.nuevo_cliente.email || null,
-            "Telefono": data.nuevo_cliente.telefono ? Number(data.nuevo_cliente.telefono) : null,
-            city: data.nuevo_cliente.city || null
-          })
-          .select("id")
-          .single();
+      // 1. Integración Siigo (Actualizar Cotización)
+      if (quoteSiigoId) {
+        try {
+          const clientDoc = (clienteQuery.data?.data as any[])?.find(c => c.id === finalClientId)?.identification;
+          
+          const siigoItems = data.items.map(i => {
+             const prod = (productoQuery.data?.data as any[])?.find(p => p.sligo_id === i.producto_id);
+             return {
+               code: prod?.sku || i.producto_id,
+               quantity: i.cantidad,
+               price: i.precio_unitario
+             }
+          });
 
-        if (clientError) {
-          throw new Error("No se pudo crear el cliente. " + clientError.message);
+          const siigoQuoteUrl = import.meta.env.DEV ? `http://localhost:3001/api/siigo/quotations/${quoteSiigoId}` : `/api/siigo/quotations/${quoteSiigoId}`;
+          const res = await fetch(siigoQuoteUrl, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+               document: { id: 1 }, 
+               date: new Date().toISOString().split('T')[0],
+               customer: { identification: clientDoc },
+               items: siigoItems
+            })
+          });
+
+          if (!res.ok) {
+             console.error("Siigo Quote Update Error:", await res.text());
+          }
+        } catch (err) {
+          console.error("Siigo Quote Update Fetch Error:", err);
         }
-        finalClientId = newClient.id;
       }
 
-      // 1. Actualizar Cotización (Master)
+      // 1.5. Actualizar Cotización (Master)
       const { error: cotError } = await supabaseClient
         .from("cotizaciones")
         .update({
@@ -235,16 +329,10 @@ export const CotizacionEdit = () => {
         let nameTo = "";
         let nitTo = "";
 
-        if (data.is_new_client) {
-          emailTo = data.nuevo_cliente.email || "";
-          nameTo = data.nuevo_cliente.name;
-          nitTo = data.nuevo_cliente.identification;
-        } else {
-          const client = (clienteQuery.data?.data as any[])?.find(c => c.id === finalClientId);
-          emailTo = client?.email || "";
-          nameTo = client?.name || "Cliente";
-          nitTo = client?.identification || "";
-        }
+        const client = (clienteQuery.data?.data as any[])?.find(c => c.id === finalClientId);
+        emailTo = client?.email || "";
+        nameTo = client?.name || "Cliente";
+        nitTo = client?.identification || "";
 
         if (emailTo) {
           const itemsForEmail = data.items.map(item => {
@@ -423,6 +511,11 @@ export const CotizacionEdit = () => {
                     <Label className="text-xs">Ciudad</Label>
                     <Input {...register("nuevo_cliente.city")} placeholder="Opcional" className="h-8" />
                   </div>
+                </div>
+                <div className="flex justify-end pt-2">
+                  <Button type="button" size="sm" onClick={handleCreateClient} disabled={isCreatingClient}>
+                    {isCreatingClient ? "Guardando..." : "Guardar Cliente en Base de Datos y Siigo"}
+                  </Button>
                 </div>
               </div>
             )}
