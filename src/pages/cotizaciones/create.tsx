@@ -93,9 +93,9 @@ export const CotizacionCreate = () => {
 
   const watchItems = watch("items");
 
-  const subtotal = watchItems.reduce((acc, item) => acc + (item.cantidad * item.precio_unitario), 0);
-  const iva = subtotal * 0.19;
-  const total = subtotal + iva;
+  const total = watchItems.reduce((acc, item) => acc + (item.cantidad * item.precio_unitario), 0);
+  const subtotal = Math.round(total / 1.19);
+  const iva = total - subtotal;
 
   const handleCreateClient = async () => {
     const data = getValues();
