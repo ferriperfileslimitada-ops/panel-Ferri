@@ -34,6 +34,10 @@ export const ProcesarFactura = () => {
 
     try {
       const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
+      console.log("=== DEBUG API URL ===");
+      console.log("VITE_API_URL enviroment variable:", import.meta.env.VITE_API_URL);
+      console.log("Final URL used for fetch:", apiUrl);
+      
       const response = await fetch(`${apiUrl}/api/extract-invoice`, {
         method: "POST",
         body: formData,
@@ -85,6 +89,10 @@ export const ProcesarFactura = () => {
     setIsUploading(true);
     try {
       const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
+      console.log("=== DEBUG SIIGO API URL ===");
+      console.log("VITE_API_URL enviroment variable:", import.meta.env.VITE_API_URL);
+      console.log("Final URL used for Siigo upload:", apiUrl);
+
       const response = await fetch(`${apiUrl}/api/upload-to-siigo`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
