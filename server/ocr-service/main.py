@@ -36,6 +36,34 @@ async def startup_event():
     setup_scheduler(app)
 
 
+import httpx
+
+GOOGLE_VISION_API_KEY = os.getenv("GOOGLE_CLOUD_API_KEY")
+
+async def google_vision_ocr(image_bytes: bytes) -> str:
+    """Usa Google Cloud Vision API para extraer texto de una imagen con precision."""
+    image_base64 = base64.b64encode(image_bytes).decode("utf-8")
+    
+    url = f"https://vision.googleapis.com/v1/images:annotate?key={GOOGLE_VISION_API_KEY}"
+    payload = {
+        "requests": [
+            {
+                "image": {"content": image_base64},
+                "features": [{"type": "DOCUMENT_TEXT_DETECTION"}]
+            }
+        ]
+    }
+    
+    async with httpx.AsyncClient(timeout=60) as client:
+        resp = await client.post(url, json=payload)
+        resp.raise_for_status()
+    
+    result = resp.json()
+    annotations = result.get("responses", [{}])[0]
+    full_text = annotations.get("fullTextAnnotation", {}).get("text", "")
+    return full_text
+
+
 @app.post("/api/extract-invoice")
 async def extract_invoice(file: UploadFile = File(...)):
     try:
@@ -53,23 +81,22 @@ async def extract_invoice(file: UploadFile = File(...)):
             if len(doc) > 0:
                 img_path = temp_dir / f"{file.filename}.png"
                 page = doc.load_page(0)
-                pix = page.get_pixmap(dpi=200)
+                pix = page.get_pixmap(dpi=300)  # Alta resolucion para mejor OCR
                 pix.save(str(img_path))
                 file_path = img_path
                 doc.close()
 
-        # Leer la imagen y convertirla a base64
+        # Leer la imagen
         with open(file_path, "rb") as img_file:
             image_bytes = img_file.read()
+
+        # PASO 1: Google Cloud Vision OCR (precision quirurgica para texto y numeros)
+        extracted_text = await google_vision_ocr(image_bytes)
         
-        image_base64 = base64.b64encode(image_bytes).decode("utf-8")
+        if not extracted_text.strip():
+            return {"status": "error", "message": "Google Vision no detectó texto en el documento."}
 
-        # Detectar el tipo MIME
-        ext = file_path.suffix.lower()
-        mime_map = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".gif": "image/gif"}
-        mime_type = mime_map.get(ext, "image/png")
-
-        # Enviar la imagen directamente a GPT-4o con vision
+        # PASO 2: GPT-4o estructura el texto extraido en JSON (sin ver la imagen, solo texto puro)
         response = await openai_client.chat.completions.create(
             model="gpt-4o",
             messages=[
@@ -77,79 +104,71 @@ async def extract_invoice(file: UploadFile = File(...)):
                     "role": "system",
                     "content": (
                         "Eres un asistente experto en extraer datos de facturas colombianas. "
+                        "Se te proporcionará el texto EXACTO extraído por OCR de una factura. "
                         "REGLAS ESTRICTAS:\n"
-                        "1. Lee EXACTAMENTE lo que dice el documento. NO inventes, NO redondees, NO deduzcas datos.\n"
+                        "1. Usa UNICAMENTE el texto proporcionado. NO inventes ni deduzcas datos que no estén en el texto.\n"
                         "2. Los precios en facturas colombianas usan PUNTO como separador de miles y COMA como decimales. Ej: $1.078.100,00 = 1078100.00\n"
                         "3. Lee cada fila de la tabla de items por separado. Cada fila es un item distinto.\n"
-                        "4. Copia los nombres de productos EXACTAMENTE como aparecen, incluyendo codigos y abreviaciones.\n"
-                        "5. Responde UNICAMENTE con un objeto JSON valido, sin texto adicional ni explicaciones.\n"
-                        "6. Si un campo no se encuentra en el documento, dejalo como null."
+                        "4. Copia los codigos, nombres de productos y el CUFE EXACTAMENTE como aparecen en el texto, caracter por caracter.\n"
+                        "5. Responde UNICAMENTE con un objeto JSON valido.\n"
+                        "6. Si un campo no se encuentra en el texto, dejalo como null.\n"
+                        "7. El CUFE suele estar etiquetado como 'CUFE:' y es un codigo hexadecimal MUY largo (96+ caracteres). Copialo COMPLETO."
                     )
                 },
                 {
                     "role": "user",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": (
-                                "Extrae TODOS los datos de esta factura y devuelve un JSON con esta estructura exacta:\n"
-                                "{\n"
-                                '  "numero_factura": "string",\n'
-                                '  "cufe": "string (Codigo Unico de Facturacion Electronica, es un codigo alfanumerico largo que suele estar cerca de un codigo QR)",\n'
-                                '  "fecha_factura": "YYYY-MM-DD",\n'
-                                '  "fecha_vencimiento": "YYYY-MM-DD o null",\n'
-                                '  "nombre_proveedor": "string (empresa que EMITE/VENDE la factura)",\n'
-                                '  "nit_proveedor": "string",\n'
-                                '  "nombre_cliente": "string (empresa COMPRADORA que recibe la factura)",\n'
-                                '  "nit_cliente": "string",\n'
-                                '  "direccion_cliente": "string completa",\n'
-                                '  "ciudad_cliente": "string",\n'
-                                '  "telefono_cliente": "string o null",\n'
-                                '  "numero_pedido": "string o null",\n'
-                                '  "numero_remision": "string o null",\n'
-                                '  "orden_compra": "string o null",\n'
-                                '  "vendedor": "string o null",\n'
-                                '  "forma_pago": "string (ej: Credito Plazo 60, Contado, etc.)",\n'
-                                '  "items": [\n'
-                                '    {\n'
-                                '      "codigo": "string",\n'
-                                '      "descripcion": "string (nombre exacto del producto tal como aparece)",\n'
-                                '      "cantidad": number,\n'
-                                '      "unidad": "string (ej: UN, KG, MT)",\n'
-                                '      "peso_kg": number o null,\n'
-                                '      "precio_unitario": number,\n'
-                                '      "descuento": number o 0,\n'
-                                '      "valor_total": number\n'
-                                '    }\n'
-                                '  ],\n'
-                                '  "subtotal": number,\n'
-                                '  "flete": number o 0,\n'
-                                '  "seguro": number o 0,\n'
-                                '  "otros_gastos": number o 0,\n'
-                                '  "iva": number,\n'
-                                '  "tarifa_iva": number (porcentaje, ej: 19),\n'
-                                '  "total": number,\n'
-                                '  "moneda": "string (ej: COP)",\n'
-                                '  "observaciones": "string o null"\n'
-                                "}\n"
-                                "REGLAS PARA LA EXTRACCION:\n"
-                                "1. Los valores numericos deben ser numeros sin formato (sin puntos de miles ni signos de pesos). Ejemplo: $5.724.457,00 se escribe como 5724457.00\n"
-                                "2. El CUFE es FUNDAMENTAL. Es un codigo alfanumerico MUY largo (usualmente 96 caracteres hexadecimales). Buscalo cerca del codigo QR o en la seccion de datos electronicos de la factura. Copialo EXACTAMENTE como aparece.\n"
-                                "3. Lee CADA FILA de la tabla de items por separado. No combines ni omitas filas."
-                            )
-                        },
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": f"data:{mime_type};base64,{image_base64}",
-                                "detail": "high"
-                            }
-                        }
-                    ]
+                    "content": (
+                        "A continuación está el texto EXACTO extraído por OCR de una factura colombiana. "
+                        "Extrae los datos y devuelve un JSON con esta estructura:\n"
+                        "{\n"
+                        '  "numero_factura": "string",\n'
+                        '  "cufe": "string (codigo alfanumerico largo, copiar EXACTO del texto)",\n'
+                        '  "fecha_factura": "YYYY-MM-DD",\n'
+                        '  "fecha_vencimiento": "YYYY-MM-DD o null",\n'
+                        '  "nombre_proveedor": "string (empresa que EMITE la factura)",\n'
+                        '  "nit_proveedor": "string",\n'
+                        '  "nombre_cliente": "string (empresa COMPRADORA)",\n'
+                        '  "nit_cliente": "string",\n'
+                        '  "direccion_cliente": "string completa",\n'
+                        '  "ciudad_cliente": "string",\n'
+                        '  "telefono_cliente": "string o null",\n'
+                        '  "numero_pedido": "string o null",\n'
+                        '  "numero_remision": "string o null",\n'
+                        '  "orden_compra": "string o null",\n'
+                        '  "vendedor": "string o null",\n'
+                        '  "forma_pago": "string",\n'
+                        '  "items": [\n'
+                        '    {\n'
+                        '      "codigo": "string",\n'
+                        '      "descripcion": "string",\n'
+                        '      "cantidad": number,\n'
+                        '      "unidad": "string",\n'
+                        '      "peso_kg": number o null,\n'
+                        '      "precio_unitario": number,\n'
+                        '      "descuento": number o 0,\n'
+                        '      "valor_total": number\n'
+                        '    }\n'
+                        '  ],\n'
+                        '  "subtotal": number,\n'
+                        '  "flete": number o 0,\n'
+                        '  "seguro": number o 0,\n'
+                        '  "otros_gastos": number o 0,\n'
+                        '  "iva": number,\n'
+                        '  "tarifa_iva": number,\n'
+                        '  "total": number,\n'
+                        '  "moneda": "string",\n'
+                        '  "observaciones": "string o null"\n'
+                        "}\n\n"
+                        "REGLAS NUMERICAS: Convierte valores monetarios colombianos a numeros planos. "
+                        "Ej: $ 1.078.100,00 → 1078100.00 | $ 58.497,00 → 58497.00\n\n"
+                        "===== TEXTO OCR DE LA FACTURA =====\n"
+                        f"{extracted_text}\n"
+                        "===== FIN DEL TEXTO ====="
+                    )
                 }
             ],
             response_format={"type": "json_object"},
-            max_tokens=3000
+            max_tokens=4000
         )
 
         json_text = response.choices[0].message.content.strip()
@@ -157,7 +176,7 @@ async def extract_invoice(file: UploadFile = File(...)):
         try:
             parsed_data = json.loads(json_text)
         except json.JSONDecodeError:
-            parsed_data = {"raw_llm_response": json_text}
+            parsed_data = {"raw_llm_response": json_text, "ocr_text": extracted_text}
 
         return {"status": "success", "data": parsed_data}
 
