@@ -24,6 +24,7 @@ import { CotizacionEdit } from "@/pages/cotizaciones/edit";
 import { Despachos } from "@/pages/despachos";
 import { Analitica } from "@/pages/analitica";
 import { Toaster } from "@/components/ui/sonner";
+import { ProcesarFactura } from "@/pages/herramientas/procesar-factura";
 
 function App() {
   return (
@@ -100,6 +101,7 @@ function App() {
                 </Route>
                 <Route path="/despachos" element={<Despachos />} />
                 <Route path="/analitica" element={<Analitica />} />
+                <Route path="/herramientas/procesar-factura" element={<ProcesarFactura />} />
                 <Route path="*" element={<div>Página no encontrada</div>} />
               </Route>
               <Route

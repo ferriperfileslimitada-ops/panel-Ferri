@@ -42,6 +42,23 @@ export const Layout: React.FC<PropsWithChildren> = ({ children }) => {
           </Link>
         ))}
       </div>
+      
+      <div className="px-4 py-2">
+        <h3 className="mb-2 px-2 text-xs font-semibold tracking-tight text-muted-foreground uppercase">
+          Herramientas
+        </h3>
+        <Link
+          to="/herramientas/procesar-factura"
+          className={buttonVariants({
+            variant: "ghost",
+            className: "w-full justify-start mb-1"
+          })}
+        >
+          <FileText className="h-5 w-5 mr-3" />
+          Procesar Factura
+        </Link>
+      </div>
+
       <div className="p-4 border-t">
         <div className="mb-4 px-2">
           <p className="text-sm font-medium">{identity?.name || "Usuario"}</p>
