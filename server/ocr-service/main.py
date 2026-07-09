@@ -95,20 +95,27 @@ async def extract_invoice(file: UploadFile = File(...)):
                                 "Extrae TODOS los datos de esta factura y devuelve un JSON con esta estructura exacta:\n"
                                 "{\n"
                                 '  "numero_factura": "string",\n'
+                                '  "cufe": "string (Codigo Unico de Facturacion Electronica, es un codigo alfanumerico largo que suele estar cerca de un codigo QR)",\n'
                                 '  "fecha_factura": "YYYY-MM-DD",\n'
                                 '  "fecha_vencimiento": "YYYY-MM-DD o null",\n'
-                                '  "nombre_proveedor": "string (empresa que emite la factura)",\n'
+                                '  "nombre_proveedor": "string (empresa que EMITE/VENDE la factura)",\n'
                                 '  "nit_proveedor": "string",\n'
-                                '  "nombre_cliente": "string (empresa compradora)",\n'
+                                '  "nombre_cliente": "string (empresa COMPRADORA que recibe la factura)",\n'
                                 '  "nit_cliente": "string",\n'
-                                '  "direccion_cliente": "string",\n'
+                                '  "direccion_cliente": "string completa",\n'
                                 '  "ciudad_cliente": "string",\n'
+                                '  "telefono_cliente": "string o null",\n'
+                                '  "numero_pedido": "string o null",\n'
+                                '  "numero_remision": "string o null",\n'
+                                '  "orden_compra": "string o null",\n'
+                                '  "vendedor": "string o null",\n'
+                                '  "forma_pago": "string (ej: Credito Plazo 60, Contado, etc.)",\n'
                                 '  "items": [\n'
                                 '    {\n'
                                 '      "codigo": "string",\n'
-                                '      "descripcion": "string (nombre exacto del producto)",\n'
+                                '      "descripcion": "string (nombre exacto del producto tal como aparece)",\n'
                                 '      "cantidad": number,\n'
-                                '      "unidad": "string",\n'
+                                '      "unidad": "string (ej: UN, KG, MT)",\n'
                                 '      "peso_kg": number o null,\n'
                                 '      "precio_unitario": number,\n'
                                 '      "descuento": number o 0,\n'
@@ -116,15 +123,19 @@ async def extract_invoice(file: UploadFile = File(...)):
                                 '    }\n'
                                 '  ],\n'
                                 '  "subtotal": number,\n'
+                                '  "flete": number o 0,\n'
+                                '  "seguro": number o 0,\n'
+                                '  "otros_gastos": number o 0,\n'
                                 '  "iva": number,\n'
                                 '  "tarifa_iva": number (porcentaje, ej: 19),\n'
-                                '  "flete": number o 0,\n'
                                 '  "total": number,\n'
-                                '  "forma_pago": "string",\n'
+                                '  "moneda": "string (ej: COP)",\n'
                                 '  "observaciones": "string o null"\n'
                                 "}\n"
-                                "IMPORTANTE: Los valores numericos deben ser numeros sin formato (sin puntos de miles ni signos de pesos). "
-                                "Ejemplo: $5.724.457,00 se escribe como 5724457.00"
+                                "REGLAS PARA LA EXTRACCION:\n"
+                                "1. Los valores numericos deben ser numeros sin formato (sin puntos de miles ni signos de pesos). Ejemplo: $5.724.457,00 se escribe como 5724457.00\n"
+                                "2. El CUFE es FUNDAMENTAL. Es un codigo alfanumerico MUY largo (usualmente 96 caracteres hexadecimales). Buscalo cerca del codigo QR o en la seccion de datos electronicos de la factura. Copialo EXACTAMENTE como aparece.\n"
+                                "3. Lee CADA FILA de la tabla de items por separado. No combines ni omitas filas."
                             )
                         },
                         {
@@ -163,9 +174,8 @@ async def extract_invoice(file: UploadFile = File(...)):
 @app.post("/api/upload-to-siigo")
 async def upload_to_siigo(invoice_data: Dict[str, Any]):
     try:
-        # Buscar o crear el cliente en Siigo por NIT
         nit_proveedor = invoice_data.get("nit_proveedor", "")
-        nombre_proveedor = invoice_data.get("nombre_proveedor", "")
+        cufe = invoice_data.get("cufe", "")
         
         # Construir items para Siigo
         siigo_items = []
@@ -178,17 +188,35 @@ async def upload_to_siigo(invoice_data: Dict[str, Any]):
                 "discount": item.get("descuento", 0),
             })
         
-        # Construir payload de factura para Siigo
+        # Construir observaciones con CUFE para trazabilidad
+        observaciones = invoice_data.get("observaciones", "") or ""
+        if cufe:
+            observaciones = f"CUFE: {cufe}\n{observaciones}".strip()
+        
+        # Calcular total para el pago
+        total = invoice_data.get("total", 0)
+        
+        # Construir payload con estructura correcta de Siigo API
         siigo_payload = {
-            "document": {"id": 24},  # Tipo factura de compra
+            "document": {"id": 24},  # Tipo factura de compra (verificar en /v1/document-types)
             "date": invoice_data.get("fecha_factura", ""),
-            "customer": {
+            "supplier": {
                 "identification": nit_proveedor,
-                "name": nombre_proveedor,
+                "branch_office": 0
             },
-            "items": siigo_items,
-            "observations": invoice_data.get("observaciones", ""),
             "number": invoice_data.get("numero_factura", ""),
+            "items": siigo_items,
+            "payments": [
+                {
+                    "id": 5636,  # Condicion de pago (verificar en /v1/payment-types)
+                    "value": total,
+                    "due_date": invoice_data.get("fecha_vencimiento") or invoice_data.get("fecha_factura", "")
+                }
+            ],
+            "observations": observaciones,
+            "stamp": {
+                "send": False
+            }
         }
         
         # Enviar a Siigo
@@ -196,11 +224,13 @@ async def upload_to_siigo(invoice_data: Dict[str, Any]):
         
         # Construir URL de Siigo para el usuario
         siigo_id = resp.get("id", "") if isinstance(resp, dict) else ""
-        siigo_url = f"https://siigonube.siigo.com/#/invoices/{siigo_id}" if siigo_id else "https://siigonube.siigo.com"
+        siigo_url = f"https://siigonube.siigo.com/#/purchases/{siigo_id}" if siigo_id else "https://siigonube.siigo.com"
         
         return {
             "status": "success",
             "siigo_url": siigo_url,
+            "siigo_id": siigo_id,
+            "cufe": cufe,
             "siigo_response": resp
         }
     except Exception as e:
