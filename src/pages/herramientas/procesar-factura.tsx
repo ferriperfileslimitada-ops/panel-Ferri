@@ -33,7 +33,8 @@ export const ProcesarFactura = () => {
     formData.append("file", file);
 
     try {
-      const response = await fetch("http://localhost:8000/api/extract-invoice", {
+      const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
+      const response = await fetch(`${apiUrl}/api/extract-invoice`, {
         method: "POST",
         body: formData,
       });
@@ -83,7 +84,8 @@ export const ProcesarFactura = () => {
 
     setIsUploading(true);
     try {
-      const response = await fetch("http://localhost:8000/api/upload-to-siigo", {
+      const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
+      const response = await fetch(`${apiUrl}/api/upload-to-siigo`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(result),
