@@ -33,7 +33,9 @@ export const ProcesarFactura = () => {
     formData.append("file", file);
 
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
+      const isLocalhost = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+      const apiUrl = import.meta.env.VITE_API_URL || (isLocalhost ? "http://localhost:8000" : "https://api.ferriperfiles.com");
+      
       console.log("=== DEBUG API URL ===");
       console.log("VITE_API_URL enviroment variable:", import.meta.env.VITE_API_URL);
       console.log("Final URL used for fetch:", apiUrl);
@@ -88,7 +90,9 @@ export const ProcesarFactura = () => {
 
     setIsUploading(true);
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
+      const isLocalhost = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+      const apiUrl = import.meta.env.VITE_API_URL || (isLocalhost ? "http://localhost:8000" : "https://api.ferriperfiles.com");
+      
       console.log("=== DEBUG SIIGO API URL ===");
       console.log("VITE_API_URL enviroment variable:", import.meta.env.VITE_API_URL);
       console.log("Final URL used for Siigo upload:", apiUrl);
