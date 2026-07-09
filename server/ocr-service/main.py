@@ -69,7 +69,7 @@ async def extract_invoice(file: UploadFile = File(...)):
                 doc.close()
         
         ocr = get_ocr()
-        result = ocr.ocr(str(file_path), cls=True)
+        result = ocr.ocr(str(file_path))
         
         extracted_text = ""
         if result and result[0]:
