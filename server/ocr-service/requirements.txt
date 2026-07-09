@@ -3,6 +3,7 @@ uvicorn
 python-multipart
 pymupdf
 paddleocr
+paddlepaddle
 Pillow
 python-dotenv
 apscheduler
