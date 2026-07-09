@@ -58,12 +58,15 @@ async def extract_invoice(file: UploadFile = File(...)):
             shutil.copyfileobj(file.file, buffer)
             
         if file.filename.lower().endswith(".pdf"):
-            from pdf2image import convert_from_path
-            pages = convert_from_path(str(file_path))
-            if len(pages) > 0:
+            import fitz  # PyMuPDF
+            doc = fitz.open(file_path)
+            if len(doc) > 0:
                 img_path = temp_dir / f"{file.filename}.jpg"
-                pages[0].save(img_path, 'JPEG')
+                page = doc.load_page(0)  # first page
+                pix = page.get_pixmap()
+                pix.save(str(img_path))
                 file_path = img_path
+                doc.close()
         
         ocr = get_ocr()
         result = ocr.ocr(str(file_path), cls=True)
@@ -107,7 +110,10 @@ async def extract_invoice(file: UploadFile = File(...)):
 
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        import traceback
+        traceback.print_exc()
+        # Enviar el error real al frontend en 'message' para que se vea
+        return {"status": "error", "message": f"Error interno: {str(e)}"}
 
 # ==========================================
 # WEBHOOKS DE SUPABASE -> SIIGO

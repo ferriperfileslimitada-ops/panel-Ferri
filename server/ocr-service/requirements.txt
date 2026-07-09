@@ -1,7 +1,7 @@
 fastapi
 uvicorn
 python-multipart
-pdf2image
+pymupdf
 paddleocr
 Pillow
 python-dotenv
