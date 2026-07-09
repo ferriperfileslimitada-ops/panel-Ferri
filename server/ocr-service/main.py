@@ -1,15 +1,22 @@
+import os
+import shutil
+import json
+import base64
+from pathlib import Path
+
 from fastapi import FastAPI, UploadFile, File, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-import shutil
-import os
-import json
-from pathlib import Path
 from pydantic import BaseModel
 from typing import Optional, Dict, Any
+from openai import AsyncOpenAI
+from dotenv import load_dotenv
 
 from scheduler import setup_scheduler
 from siigo_client import siigo_client
-from supabase import create_client, Client
+
+# Cargar .env
+dotenv_path = os.path.join(os.path.dirname(__file__), '..', '..', '.env')
+load_dotenv(dotenv_path)
 
 app = FastAPI(title="OCR & Siigo Sync Service")
 
@@ -21,99 +28,89 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
 @app.on_event("startup")
 async def startup_event():
     # Iniciar el scheduler en background
     setup_scheduler(app)
-    
-# Initialize models lazily
-ocr_model = None
-llm_model = None
 
-def get_ocr():
-    global ocr_model
-    if ocr_model is None:
-        from paddleocr import PaddleOCR
-        ocr_model = PaddleOCR(use_angle_cls=True, lang='en')
-    return ocr_model
-
-from openai import AsyncOpenAI
-import os
-from dotenv import load_dotenv
-
-# Cargar .env por si no está cargado globalmente
-dotenv_path = os.path.join(os.path.dirname(__file__), '..', '..', '.env')
-load_dotenv(dotenv_path)
-
-openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 @app.post("/api/extract-invoice")
 async def extract_invoice(file: UploadFile = File(...)):
     try:
         temp_dir = Path("temp")
         temp_dir.mkdir(exist_ok=True)
-        
+
         file_path = temp_dir / file.filename
         with file_path.open("wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
-            
+
+        # Si es PDF, convertir la primera pagina a imagen con PyMuPDF
         if file.filename.lower().endswith(".pdf"):
             import fitz  # PyMuPDF
             doc = fitz.open(file_path)
             if len(doc) > 0:
-                img_path = temp_dir / f"{file.filename}.jpg"
-                page = doc.load_page(0)  # first page
-                pix = page.get_pixmap()
+                img_path = temp_dir / f"{file.filename}.png"
+                page = doc.load_page(0)
+                pix = page.get_pixmap(dpi=200)
                 pix.save(str(img_path))
                 file_path = img_path
                 doc.close()
+
+        # Leer la imagen y convertirla a base64
+        with open(file_path, "rb") as img_file:
+            image_bytes = img_file.read()
         
-        ocr = get_ocr()
-        result = ocr.ocr(str(file_path))
-        
-        extracted_text = ""
-        if result and result[0]:
-            for line in result[0]:
-                extracted_text += line[1][0] + "\n"
-                
-        if not extracted_text.strip():
-             return {"status": "error", "message": "No text detected in the document."}
-                
-        prompt = f"""
-        Extract the following fields from this invoice text and return ONLY a valid JSON object.
-        Keys to include: Invoice Number, Invoice Date, Customer Name, Customer Address, Purchased Items (List of objects with Item Name, Quantity, Price), SGST, CGST, Tax Total, Full Total.
-        If a field is not found, leave it as null.
-        
-        Invoice Text:
-        {extracted_text}
-        
-        JSON Output:
-        """
-        
+        image_base64 = base64.b64encode(image_bytes).decode("utf-8")
+
+        # Detectar el tipo MIME
+        ext = file_path.suffix.lower()
+        mime_map = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".gif": "image/gif"}
+        mime_type = mime_map.get(ext, "image/png")
+
+        # Enviar la imagen directamente a GPT-4o-mini con vision
         response = await openai_client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
-                {"role": "system", "content": "You are a helpful assistant designed to output JSON."},
-                {"role": "user", "content": prompt}
+                {
+                    "role": "system",
+                    "content": "Eres un asistente experto en extraer datos de facturas y comprobantes. Responde UNICAMENTE con un objeto JSON valido, sin texto adicional."
+                },
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "Extrae los siguientes campos de esta factura/comprobante y devuelve SOLO un JSON valido. Campos: numero_factura, fecha, nombre_cliente, direccion_cliente, identificacion_cliente, items (lista de objetos con nombre, cantidad, precio_unitario, precio_total), subtotal, impuestos, total. Si un campo no se encuentra, dejalo como null."
+                        },
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:{mime_type};base64,{image_base64}"
+                            }
+                        }
+                    ]
+                }
             ],
-            response_format={ "type": "json_object" }
+            response_format={"type": "json_object"},
+            max_tokens=2000
         )
-        
+
         json_text = response.choices[0].message.content.strip()
-        
+
         try:
             parsed_data = json.loads(json_text)
         except json.JSONDecodeError:
-            parsed_data = {"raw_llm_response": json_text, "extracted_text": extracted_text}
-        
+            parsed_data = {"raw_llm_response": json_text}
+
         return {"status": "success", "data": parsed_data}
 
-        
     except Exception as e:
         import traceback
         traceback.print_exc()
-        # Enviar el error real al frontend en 'message' para que se vea
         return {"status": "error", "message": f"Error interno: {str(e)}"}
+
 
 # ==========================================
 # WEBHOOKS DE SUPABASE -> SIIGO
