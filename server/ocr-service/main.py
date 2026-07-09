@@ -69,32 +69,76 @@ async def extract_invoice(file: UploadFile = File(...)):
         mime_map = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".gif": "image/gif"}
         mime_type = mime_map.get(ext, "image/png")
 
-        # Enviar la imagen directamente a GPT-4o-mini con vision
+        # Enviar la imagen directamente a GPT-4o con vision
         response = await openai_client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-4o",
             messages=[
                 {
                     "role": "system",
-                    "content": "Eres un asistente experto en extraer datos de facturas y comprobantes. Responde UNICAMENTE con un objeto JSON valido, sin texto adicional."
+                    "content": (
+                        "Eres un asistente experto en extraer datos de facturas colombianas. "
+                        "REGLAS ESTRICTAS:\n"
+                        "1. Lee EXACTAMENTE lo que dice el documento. NO inventes, NO redondees, NO deduzcas datos.\n"
+                        "2. Los precios en facturas colombianas usan PUNTO como separador de miles y COMA como decimales. Ej: $1.078.100,00 = 1078100.00\n"
+                        "3. Lee cada fila de la tabla de items por separado. Cada fila es un item distinto.\n"
+                        "4. Copia los nombres de productos EXACTAMENTE como aparecen, incluyendo codigos y abreviaciones.\n"
+                        "5. Responde UNICAMENTE con un objeto JSON valido, sin texto adicional ni explicaciones.\n"
+                        "6. Si un campo no se encuentra en el documento, dejalo como null."
+                    )
                 },
                 {
                     "role": "user",
                     "content": [
                         {
                             "type": "text",
-                            "text": "Extrae los siguientes campos de esta factura/comprobante y devuelve SOLO un JSON valido. Campos: numero_factura, fecha, nombre_cliente, direccion_cliente, identificacion_cliente, items (lista de objetos con nombre, cantidad, precio_unitario, precio_total), subtotal, impuestos, total. Si un campo no se encuentra, dejalo como null."
+                            "text": (
+                                "Extrae TODOS los datos de esta factura y devuelve un JSON con esta estructura exacta:\n"
+                                "{\n"
+                                '  "numero_factura": "string",\n'
+                                '  "fecha_factura": "YYYY-MM-DD",\n'
+                                '  "fecha_vencimiento": "YYYY-MM-DD o null",\n'
+                                '  "nombre_proveedor": "string (empresa que emite la factura)",\n'
+                                '  "nit_proveedor": "string",\n'
+                                '  "nombre_cliente": "string (empresa compradora)",\n'
+                                '  "nit_cliente": "string",\n'
+                                '  "direccion_cliente": "string",\n'
+                                '  "ciudad_cliente": "string",\n'
+                                '  "items": [\n'
+                                '    {\n'
+                                '      "codigo": "string",\n'
+                                '      "descripcion": "string (nombre exacto del producto)",\n'
+                                '      "cantidad": number,\n'
+                                '      "unidad": "string",\n'
+                                '      "peso_kg": number o null,\n'
+                                '      "precio_unitario": number,\n'
+                                '      "descuento": number o 0,\n'
+                                '      "valor_total": number\n'
+                                '    }\n'
+                                '  ],\n'
+                                '  "subtotal": number,\n'
+                                '  "iva": number,\n'
+                                '  "tarifa_iva": number (porcentaje, ej: 19),\n'
+                                '  "flete": number o 0,\n'
+                                '  "total": number,\n'
+                                '  "forma_pago": "string",\n'
+                                '  "observaciones": "string o null"\n'
+                                "}\n"
+                                "IMPORTANTE: Los valores numericos deben ser numeros sin formato (sin puntos de miles ni signos de pesos). "
+                                "Ejemplo: $5.724.457,00 se escribe como 5724457.00"
+                            )
                         },
                         {
                             "type": "image_url",
                             "image_url": {
-                                "url": f"data:{mime_type};base64,{image_base64}"
+                                "url": f"data:{mime_type};base64,{image_base64}",
+                                "detail": "high"
                             }
                         }
                     ]
                 }
             ],
             response_format={"type": "json_object"},
-            max_tokens=2000
+            max_tokens=3000
         )
 
         json_text = response.choices[0].message.content.strip()
@@ -110,6 +154,59 @@ async def extract_invoice(file: UploadFile = File(...)):
         import traceback
         traceback.print_exc()
         return {"status": "error", "message": f"Error interno: {str(e)}"}
+
+
+# ==========================================
+# SUBIR FACTURA EXTRAÍDA A SIIGO
+# ==========================================
+
+@app.post("/api/upload-to-siigo")
+async def upload_to_siigo(invoice_data: Dict[str, Any]):
+    try:
+        # Buscar o crear el cliente en Siigo por NIT
+        nit_proveedor = invoice_data.get("nit_proveedor", "")
+        nombre_proveedor = invoice_data.get("nombre_proveedor", "")
+        
+        # Construir items para Siigo
+        siigo_items = []
+        for item in invoice_data.get("items", []):
+            siigo_items.append({
+                "code": item.get("codigo", ""),
+                "description": item.get("descripcion", ""),
+                "quantity": item.get("cantidad", 1),
+                "price": item.get("precio_unitario", 0),
+                "discount": item.get("descuento", 0),
+            })
+        
+        # Construir payload de factura para Siigo
+        siigo_payload = {
+            "document": {"id": 24},  # Tipo factura de compra
+            "date": invoice_data.get("fecha_factura", ""),
+            "customer": {
+                "identification": nit_proveedor,
+                "name": nombre_proveedor,
+            },
+            "items": siigo_items,
+            "observations": invoice_data.get("observaciones", ""),
+            "number": invoice_data.get("numero_factura", ""),
+        }
+        
+        # Enviar a Siigo
+        resp = siigo_client.create_purchase_invoice(siigo_payload)
+        
+        # Construir URL de Siigo para el usuario
+        siigo_id = resp.get("id", "") if isinstance(resp, dict) else ""
+        siigo_url = f"https://siigonube.siigo.com/#/invoices/{siigo_id}" if siigo_id else "https://siigonube.siigo.com"
+        
+        return {
+            "status": "success",
+            "siigo_url": siigo_url,
+            "siigo_response": resp
+        }
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"status": "error", "message": f"Error subiendo a Siigo: {str(e)}"}
 
 
 # ==========================================

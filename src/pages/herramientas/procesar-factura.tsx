@@ -1,18 +1,24 @@
 import React, { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { UploadCloud, FileText, CheckCircle, AlertCircle, Loader2 } from "lucide-react";
+import { UploadCloud, FileText, CheckCircle, AlertCircle, Loader2, Pencil, Send, ExternalLink, Save } from "lucide-react";
 import { toast } from "sonner";
 
 export const ProcesarFactura = () => {
   const [file, setFile] = useState<File | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [result, setResult] = useState<any>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editableJson, setEditableJson] = useState("");
+  const [isUploading, setIsUploading] = useState(false);
+  const [siigoUrl, setSiigoUrl] = useState<string | null>(null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       setFile(e.target.files[0]);
       setResult(null);
+      setIsEditing(false);
+      setSiigoUrl(null);
     }
   };
 
@@ -20,11 +26,13 @@ export const ProcesarFactura = () => {
     if (!file) return;
 
     setIsProcessing(true);
+    setResult(null);
+    setIsEditing(false);
+    setSiigoUrl(null);
     const formData = new FormData();
     formData.append("file", file);
 
     try {
-      // Usamos el microservicio de python corriendo en el puerto 8000
       const response = await fetch("http://localhost:8000/api/extract-invoice", {
         method: "POST",
         body: formData,
@@ -37,6 +45,7 @@ export const ProcesarFactura = () => {
       const data = await response.json();
       if (data.status === "success") {
         setResult(data.data);
+        setEditableJson(JSON.stringify(data.data, null, 2));
         toast.success("Factura procesada con éxito");
       } else {
         throw new Error(data.message || "Error procesando la factura");
@@ -45,6 +54,56 @@ export const ProcesarFactura = () => {
       toast.error(error.message || "No se pudo conectar con el servicio de OCR");
     } finally {
       setIsProcessing(false);
+    }
+  };
+
+  const handleStartEditing = () => {
+    setEditableJson(JSON.stringify(result, null, 2));
+    setIsEditing(true);
+  };
+
+  const handleSaveEdit = () => {
+    try {
+      const parsed = JSON.parse(editableJson);
+      setResult(parsed);
+      setIsEditing(false);
+      toast.success("Datos actualizados correctamente");
+    } catch (error) {
+      toast.error("JSON inválido. Revisa la sintaxis antes de guardar.");
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditableJson(JSON.stringify(result, null, 2));
+    setIsEditing(false);
+  };
+
+  const handleUploadToSiigo = async () => {
+    if (!result) return;
+
+    setIsUploading(true);
+    try {
+      const response = await fetch("http://localhost:8000/api/upload-to-siigo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(result),
+      });
+
+      if (!response.ok) {
+        throw new Error("Error subiendo a Siigo");
+      }
+
+      const data = await response.json();
+      if (data.status === "success") {
+        setSiigoUrl(data.siigo_url || null);
+        toast.success("Factura subida a Siigo exitosamente");
+      } else {
+        throw new Error(data.message || "Error subiendo a Siigo");
+      }
+    } catch (error: any) {
+      toast.error(error.message || "No se pudo subir la factura a Siigo");
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -92,7 +151,7 @@ export const ProcesarFactura = () => {
               {isProcessing ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Procesando con IA...
+                  Procesando con IA (GPT-4o)...
                 </>
               ) : (
                 <>
@@ -107,13 +166,13 @@ export const ProcesarFactura = () => {
         <Card>
           <CardHeader>
             <CardTitle>Datos Extraídos</CardTitle>
-            <CardDescription>Revisa los datos obtenidos antes de guardarlos.</CardDescription>
+            <CardDescription>Revisa los datos obtenidos antes de subirlos a Siigo.</CardDescription>
           </CardHeader>
           <CardContent>
             {isProcessing ? (
               <div className="flex flex-col items-center justify-center h-40 space-y-4 text-muted-foreground">
                 <Loader2 className="w-8 h-8 animate-spin text-primary" />
-                <p className="text-sm animate-pulse">Analizando estructura y texto...</p>
+                <p className="text-sm animate-pulse">Analizando factura con GPT-4o...</p>
               </div>
             ) : result ? (
               <div className="space-y-4">
@@ -121,9 +180,49 @@ export const ProcesarFactura = () => {
                   <CheckCircle className="w-4 h-4 mr-2" />
                   Extracción completada
                 </div>
-                <div className="bg-muted p-4 rounded-md overflow-auto max-h-96">
-                  <pre className="text-xs">{JSON.stringify(result, null, 2)}</pre>
-                </div>
+
+                {isEditing ? (
+                  <textarea
+                    className="w-full h-96 p-3 font-mono text-xs rounded-md border border-input bg-background focus:outline-none focus:ring-2 focus:ring-primary resize-none"
+                    value={editableJson}
+                    onChange={(e) => setEditableJson(e.target.value)}
+                    spellCheck={false}
+                  />
+                ) : (
+                  <div className="bg-muted p-4 rounded-md overflow-auto max-h-96">
+                    <pre className="text-xs">{JSON.stringify(result, null, 2)}</pre>
+                  </div>
+                )}
+
+                {/* Mostrar URL de Siigo si ya se subió */}
+                {siigoUrl && (
+                  <div className="flex items-center gap-2 p-3 rounded-md bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800">
+                    <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-green-800 dark:text-green-300">
+                        Factura subida exitosamente a Siigo
+                      </p>
+                      <a
+                        href={siigoUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-green-600 dark:text-green-400 hover:underline break-all"
+                      >
+                        {siigoUrl}
+                      </a>
+                    </div>
+                    <a
+                      href={siigoUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <Button size="sm" variant="outline" className="flex-shrink-0">
+                        <ExternalLink className="w-3 h-3 mr-1" />
+                        Confirmar
+                      </Button>
+                    </a>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="flex flex-col items-center justify-center h-40 text-muted-foreground text-sm text-center">
@@ -133,9 +232,48 @@ export const ProcesarFactura = () => {
             )}
           </CardContent>
           {result && (
-            <CardFooter>
-              {/* En el futuro aquí podemos conectar estos datos con un formulario de creación de factura */}
-              <Button className="w-full" variant="secondary">Usar datos para nueva Cotización / Compra</Button>
+            <CardFooter className="flex gap-2">
+              {isEditing ? (
+                <>
+                  <Button className="flex-1" onClick={handleSaveEdit} variant="default">
+                    <Save className="mr-2 h-4 w-4" />
+                    Guardar Cambios
+                  </Button>
+                  <Button className="flex-1" onClick={handleCancelEdit} variant="outline">
+                    Cancelar
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button className="flex-1" onClick={handleStartEditing} variant="outline">
+                    <Pencil className="mr-2 h-4 w-4" />
+                    Corregir
+                  </Button>
+                  <Button
+                    className="flex-1"
+                    onClick={handleUploadToSiigo}
+                    disabled={isUploading || !!siigoUrl}
+                    variant="default"
+                  >
+                    {isUploading ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Subiendo a Siigo...
+                      </>
+                    ) : siigoUrl ? (
+                      <>
+                        <CheckCircle className="mr-2 h-4 w-4" />
+                        Subido a Siigo
+                      </>
+                    ) : (
+                      <>
+                        <Send className="mr-2 h-4 w-4" />
+                        Revisado, subir a Siigo
+                      </>
+                    )}
+                  </Button>
+                </>
+              )}
             </CardFooter>
           )}
         </Card>
