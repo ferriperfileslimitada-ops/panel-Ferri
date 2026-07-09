@@ -7,8 +7,8 @@ from pathlib import Path
 from pydantic import BaseModel
 from typing import Optional, Dict, Any
 
-from .scheduler import setup_scheduler
-from .siigo_client import siigo_client
+from scheduler import setup_scheduler
+from siigo_client import siigo_client
 from supabase import create_client, Client
 
 app = FastAPI(title="OCR & Siigo Sync Service")
@@ -37,18 +37,15 @@ def get_ocr():
         ocr_model = PaddleOCR(use_angle_cls=True, lang='en')
     return ocr_model
 
-def get_llm():
-    global llm_model
-    if llm_model is None:
-        import torch
-        from transformers import pipeline
-        llm_model = pipeline(
-            "text-generation",
-            model="mistralai/Mistral-7B-Instruct-v0.1",
-            torch_dtype=torch.float16,
-            device_map="auto"
-        )
-    return llm_model
+from openai import AsyncOpenAI
+import os
+from dotenv import load_dotenv
+
+# Cargar .env por si no está cargado globalmente
+dotenv_path = os.path.join(os.path.dirname(__file__), '..', '..', '.env')
+load_dotenv(dotenv_path)
+
+openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 @app.post("/api/extract-invoice")
 async def extract_invoice(file: UploadFile = File(...)):
@@ -90,21 +87,24 @@ async def extract_invoice(file: UploadFile = File(...)):
         JSON Output:
         """
         
-        llm = get_llm()
-        response = llm(prompt, max_new_tokens=500, return_full_text=False)
-        json_text = response[0]["generated_text"].strip()
+        response = await openai_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant designed to output JSON."},
+                {"role": "user", "content": prompt}
+            ],
+            response_format={ "type": "json_object" }
+        )
         
-        if json_text.startswith("```json"):
-            json_text = json_text[7:-3]
-        elif json_text.startswith("```"):
-            json_text = json_text[3:-3]
-            
+        json_text = response.choices[0].message.content.strip()
+        
         try:
             parsed_data = json.loads(json_text)
         except json.JSONDecodeError:
             parsed_data = {"raw_llm_response": json_text, "extracted_text": extracted_text}
         
         return {"status": "success", "data": parsed_data}
+
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

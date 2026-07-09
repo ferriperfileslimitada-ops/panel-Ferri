@@ -1,7 +1,7 @@
 from mcp.server.fastmcp import FastMCP
 from typing import Dict, Any
 
-from .siigo_client import siigo_client
+from siigo_client import siigo_client
 
 mcp = FastMCP("Siigo")
 
@@ -9,7 +9,7 @@ mcp = FastMCP("Siigo")
 def search_customer(identification: str) -> Dict[str, Any]:
     \"\"\"Busca un cliente (tercero) en Siigo por su identificacion (NIT o Cédula).\"\"\"
     # Siigo v1/customers?identification=...
-    from .siigo_client import SIIGO_BASE_URL
+    from siigo_client import SIIGO_BASE_URL
     url = f"{SIIGO_BASE_URL}/v1/customers?identification={identification}"
     import requests
     response = requests.get(url, headers=siigo_client._get_headers())

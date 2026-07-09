@@ -5,7 +5,7 @@ from apscheduler.triggers.cron import CronTrigger
 from supabase import create_client, Client
 from dotenv import load_dotenv
 
-from .siigo_client import siigo_client
+from siigo_client import siigo_client
 
 # Cargar variables
 dotenv_path = os.path.join(os.path.dirname(__file__), '..', '..', '.env')
