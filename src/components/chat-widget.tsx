@@ -114,7 +114,7 @@ export const ChatWidget = () => {
     <>
       <Button
         onClick={() => setIsOpen(true)}
-        className={`fixed bottom-6 left-6 h-14 w-14 rounded-full shadow-lg z-50 transition-transform hover:scale-105 ${isOpen ? 'hidden' : 'flex'}`}
+        className={`fixed bottom-6 right-6 h-14 w-14 rounded-full shadow-lg z-50 transition-transform hover:scale-105 ${isOpen ? 'hidden' : 'flex'}`}
         size="icon"
       >
         <span className="text-2xl">🤖</span>
@@ -127,7 +127,7 @@ export const ChatWidget = () => {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 20, scale: 0.95 }}
             transition={{ duration: 0.2 }}
-            className="fixed bottom-6 left-6 w-[400px] h-[600px] max-h-[80vh] bg-card border rounded-2xl shadow-2xl z-50 flex flex-col overflow-hidden"
+            className="fixed bottom-6 right-6 w-[400px] h-[600px] max-h-[80vh] bg-card border rounded-2xl shadow-2xl z-50 flex flex-col overflow-hidden"
           >
             {/* Header */}
             <div className="flex items-center justify-between p-3 border-b bg-muted/50 backdrop-blur-md">

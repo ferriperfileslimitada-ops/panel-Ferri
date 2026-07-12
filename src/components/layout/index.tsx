@@ -1,7 +1,7 @@
 import React, { PropsWithChildren } from "react";
 import { useMenu, useLogout, useGetIdentity } from "@refinedev/core";
 import { Link } from "react-router";
-import { LogOut, Package, Users, FileText, Truck, BarChart3, Menu as MenuIcon } from "lucide-react";
+import { LogOut, Package, Users, FileText, Truck, BarChart3, Menu as MenuIcon, ShieldAlert } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { ThemeProvider } from "@/components/theme-provider";
@@ -51,12 +51,22 @@ export const Layout: React.FC<PropsWithChildren> = ({ children }) => {
         <Link
           to="/herramientas/procesar-factura"
           className={buttonVariants({
-            variant: "ghost",
+            variant: selectedKey === "/herramientas/procesar-factura" ? "secondary" : "ghost",
             className: "w-full justify-start mb-1"
           })}
         >
           <FileText className="h-5 w-5 mr-3" />
           Procesar Factura
+        </Link>
+        <Link
+          to="/herramientas/logs"
+          className={buttonVariants({
+            variant: selectedKey === "/herramientas/logs" ? "secondary" : "ghost",
+            className: "w-full justify-start mb-1"
+          })}
+        >
+          <ShieldAlert className="h-5 w-5 mr-3" />
+          Panel de Logs
         </Link>
       </div>
 

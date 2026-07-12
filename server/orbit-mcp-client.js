@@ -1,4 +1,5 @@
 const dotenv = require('dotenv');
+const logger = require('./logger');
 
 dotenv.config();
 
@@ -59,6 +60,10 @@ class OrbitMCPClientManager {
       } catch (error) {
         this.connectionPromise = null;
         console.error('Failed to connect Orbit MCP Client:', error.message || error);
+        logger.logError('Orbit MCP Client', error.message || 'Fallo de conexión con Orbit MCP', {
+          url: process.env.ORBIT_MCP_URL,
+          stack: error.stack
+        });
         throw error;
       }
     })();

@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const nodemailer = require('nodemailer');
 const dotenv = require('dotenv');
+const logger = require('./logger');
 
 dotenv.config();
 
@@ -445,11 +446,32 @@ app.get('/api/integrations/orbit/health', async (req, res) => {
     });
   } catch (error) {
     console.error('Orbit Health check failed', error);
+    logger.logError('Orbit Health Route', error.message || 'Error en health check', error.stack);
     res.status(500).json({
       connected: false,
       error: 'Error interno conectando con Orbit MCP'
     });
   }
+});
+
+// SYSTEM LOGS ENDPOINTS
+
+app.get('/api/logs', (req, res) => {
+  res.json(logger.getLogs());
+});
+
+app.post('/api/logs/clear', (req, res) => {
+  logger.clearLogs();
+  res.json({ success: true });
+});
+
+app.post('/api/logs', (req, res) => {
+  const { service, message, details } = req.body;
+  if (!service || !message) {
+    return res.status(400).json({ error: 'service y message son obligatorios' });
+  }
+  logger.logError(service, message, details);
+  res.json({ success: true });
 });
 
 // React Router Fallback
