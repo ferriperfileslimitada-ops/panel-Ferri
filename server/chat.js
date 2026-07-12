@@ -60,12 +60,13 @@ Ayudas al equipo a consultar y operar Siigo y la base de datos local sincronizad
 Responde SIEMPRE en español colombiano de forma clara, directa y profesional.
 
 Reglas críticas:
-1. Para responder a consultas de información sobre productos (existencias, stock, precios, códigos) o clientes (NIT, teléfonos, correos, nombres, dirección), usa exclusivamente las herramientas de base de datos local ("db_search_products" y "db_search_customers"). NO utilices las herramientas de lectura de Siigo (MCP) para esto, ya que el panel está sincronizado y es más rápido.
-2. Solo debes utilizar las herramientas de Siigo (MCP) para tareas que requieran CREAR o ACTUALIZAR datos (como crear clientes en Siigo, actualizar precios en Siigo, o generar cotizaciones).
-3. Si un usuario te pide actualizar el stock (existencias) directamente, explícale claramente que "Siigo no expone un método público (endpoint) para fijar el stock directamente. Las existencias se actualizan a través de documentos de inventario (compras, ventas, ajustes)."
+1. Al consultar clientes o productos (existencias, precios, NIT), ESTÁS LEYENDO LA BASE DE DATOS LOCAL, NO SIIGO. Por lo tanto, si no encuentras algo, NUNCA digas "No lo encontré en Siigo". Di siempre "No encontré este registro en la base de datos", y asume que el usuario debe verificar el nombre o identificación. Usa exclusivamente "db_search_products" y "db_search_customers".
+2. Solo debes utilizar las herramientas de Siigo (MCP) para tareas que requieran CREAR o ACTUALIZAR datos (como crear clientes, actualizar precios, generar cotizaciones).
+3. Si un usuario te pide actualizar el stock (existencias) directamente, explícale claramente que "Siigo no expone un método público para fijar el stock directamente. Las existencias se actualizan a través de documentos de inventario (compras, ventas, ajustes)."
 4. Si creas una cotización, muestra claramente el ID y Número de cotización que retorna Siigo.
-5. Para listar productos o clientes, muestra un resumen amigable. El frontend lo renderizará como tarjetas si la respuesta es estructurada, pero tú responde el resumen en texto.
-6. No pidas confirmación tú mismo: el sistema lo hará automáticamente si usas herramientas de escritura de Siigo.
+5. Para listar productos o clientes, muestra un resumen amigable.
+6. Si recibes un "Error" como respuesta de alguna herramienta, no interrumpas la conversación. Explícale el error al usuario de manera amable y dile qué opciones tiene para corregirlo.
+7. No pidas confirmación tú mismo: el sistema lo hará automáticamente si usas herramientas de escritura de Siigo.
 `;
 
 router.post('/', authMiddleware, async (req, res) => {
@@ -86,12 +87,12 @@ router.post('/', authMiddleware, async (req, res) => {
       
       // Exclude read-only MCP tools for products and clients to force using local DB
       const isReadOnlyMcpProductOrClient = 
-        t.name.startsWith('siigo_list_products') ||
-        t.name.startsWith('siigo_get_product') ||
-        t.name.startsWith('siigo_search_products') ||
-        t.name.startsWith('siigo_list_customers') ||
-        t.name.startsWith('siigo_get_customer') ||
-        t.name.startsWith('siigo_search_customers');
+        t.name === 'siigo_get_products' ||
+        t.name === 'siigo_get_product' ||
+        t.name === 'siigo_search_products' ||
+        t.name === 'siigo_get_customers' ||
+        t.name === 'siigo_get_customer' ||
+        t.name === 'siigo_search_customers';
       
       return !isReadOnlyMcpProductOrClient;
     });
@@ -117,10 +118,8 @@ router.post('/', authMiddleware, async (req, res) => {
           stack: err.stack,
           user: req.user?.email
         });
-        return res.json({
-          role: 'assistant',
-          content: `Hubo un error de conexión con Siigo al intentar ejecutar la acción: ${err.message}. Por favor revisa los datos o consulta el Panel de Logs.`
-        });
+        // Pasamos el error al LLM para que pueda interpretar qué pasó y avisarle al usuario amablemente
+        result = { error: `Fallo al ejecutar la herramienta en Siigo: ${err.message}` };
       }
 
       // Add to conversation
@@ -210,10 +209,11 @@ router.post('/', authMiddleware, async (req, res) => {
       if (toolName === 'db_search_products') {
         try {
           const { query } = toolArgs;
+          const cleanQuery = query ? query.trim() : '';
           const { data, error } = await supabase
             .from('productos')
-            .select('*')
-            .or(`code.ilike.%${query}%,nombre.ilike.%${query}%`)
+            .select('id, siigo_id, code, nombre, sku, price, stock, active, unit_name, updated_at')
+            .or(`code.ilike.%${cleanQuery}%,nombre.ilike.%${cleanQuery}%`)
             .limit(25);
           
           if (error) throw error;
@@ -239,9 +239,21 @@ router.post('/', authMiddleware, async (req, res) => {
         } catch (err) {
           console.error('Error in db_search_products:', err);
           logger.logError('DB Search Products', err.message || err, err.stack);
+          messages.push(responseMessage);
+          messages.push({
+            role: 'tool',
+            tool_call_id: toolCall.id,
+            name: toolName,
+            content: JSON.stringify({ error: `Fallo al consultar base de datos: ${err.message}` })
+          });
+          const finalCompletion = await openai.chat.completions.create({
+            model: 'gpt-4o-mini',
+            messages,
+          });
           return res.json({
             role: 'assistant',
-            content: `Lo siento, hubo un problema al consultar la base de datos de productos: ${err.message}`
+            content: finalCompletion.choices[0].message.content,
+            executed_tool: toolName
           });
         }
       }
@@ -249,10 +261,11 @@ router.post('/', authMiddleware, async (req, res) => {
       if (toolName === 'db_search_customers') {
         try {
           const { query } = toolArgs;
+          const cleanQuery = query ? query.trim() : '';
           const { data, error } = await supabase
             .from('clientes')
-            .select('*')
-            .or(`name.ilike.%${query}%,identification.ilike.%${query}%,email.ilike.%${query}%`)
+            .select('id, siigo_id, identification, name, email, city, Telefono, direccion, person_type, updated_at')
+            .or(`name.ilike.%${cleanQuery}%,identification.ilike.%${cleanQuery}%,email.ilike.%${cleanQuery}%`)
             .limit(25);
           
           if (error) throw error;
@@ -278,9 +291,21 @@ router.post('/', authMiddleware, async (req, res) => {
         } catch (err) {
           console.error('Error in db_search_customers:', err);
           logger.logError('DB Search Customers', err.message || err, err.stack);
+          messages.push(responseMessage);
+          messages.push({
+            role: 'tool',
+            tool_call_id: toolCall.id,
+            name: toolName,
+            content: JSON.stringify({ error: `Fallo al consultar base de datos: ${err.message}` })
+          });
+          const finalCompletion = await openai.chat.completions.create({
+            model: 'gpt-4o-mini',
+            messages,
+          });
           return res.json({
             role: 'assistant',
-            content: `Lo siento, hubo un problema al consultar la base de datos de clientes: ${err.message}`
+            content: finalCompletion.choices[0].message.content,
+            executed_tool: toolName
           });
         }
       }
@@ -329,9 +354,24 @@ router.post('/', authMiddleware, async (req, res) => {
             stack: err.stack,
             user: req.user?.email
           });
+          
+          messages.push(responseMessage);
+          messages.push({
+            role: 'tool',
+            tool_call_id: toolCall.id,
+            name: toolName,
+            content: JSON.stringify({ error: `Fallo al ejecutar herramienta en Siigo: ${err.message}` })
+          });
+          
+          const finalCompletion = await openai.chat.completions.create({
+            model: 'gpt-4o-mini',
+            messages,
+          });
+          
           return res.json({
             role: 'assistant',
-            content: `Lo siento, hubo un problema al consultar Siigo (${err.message}). Intenta más tarde o revisa el Panel de Logs.`
+            content: finalCompletion.choices[0].message.content,
+            executed_tool: toolName
           });
         }
       }
