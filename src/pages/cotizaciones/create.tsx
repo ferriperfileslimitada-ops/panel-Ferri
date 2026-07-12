@@ -43,6 +43,8 @@ export const CotizacionCreate = () => {
   // Combobox states
   const [openCliente, setOpenCliente] = useState(false);
   const [openProductos, setOpenProductos] = useState<Record<number, boolean>>({});
+  const [selectedCliente, setSelectedCliente] = useState<any>(null);
+  const [selectedProductsMap, setSelectedProductsMap] = useState<Record<string, any>>({});
 
   const { register, control, handleSubmit, watch, setValue, getValues } = useForm<FormValues>({
     defaultValues: {
@@ -166,6 +168,7 @@ export const CotizacionCreate = () => {
       }
       
       toast.success("Cliente creado exitosamente");
+      setSelectedCliente({ id: newClient.id, name: data.nuevo_cliente.name });
       setValue("cliente_id", newClient.id);
       setValue("is_new_client", false);
       clienteQuery.refetch(); 
@@ -372,14 +375,22 @@ export const CotizacionCreate = () => {
                 control={control}
                 name="cliente_id"
                 render={({ field }) => (
-                  <Popover open={openCliente} onOpenChange={setOpenCliente}>
+                  <Popover 
+                    open={openCliente} 
+                    onOpenChange={(isOpen) => {
+                      setOpenCliente(isOpen);
+                      if (isOpen) {
+                        onSearchCliente("");
+                      }
+                    }}
+                  >
                     <PopoverTrigger 
                       className={cn(buttonVariants({ variant: "outline" }), "w-full justify-between", isNewClient ? "border-primary" : "")}
                     >
                         {isNewClient ? (
                           <span className="text-primary font-medium">✨ Creando nuevo cliente...</span>
                         ) : field.value ? (
-                          clienteOptions?.find((c) => c.value === field.value)?.label
+                          selectedCliente?.name || clienteOptions?.find((c) => c.value === field.value)?.label
                         ) : (
                           "Buscar por nombre, NIT o email..."
                         )}
@@ -388,6 +399,7 @@ export const CotizacionCreate = () => {
                     <PopoverContent className="w-[400px] p-0" align="start">
                       <Command
                         shouldFilter={false}
+                        filter={() => 1}
                       >
                         <CommandInput 
                           placeholder="Escribe nombre, NIT o email..." 
@@ -414,10 +426,14 @@ export const CotizacionCreate = () => {
                               <CommandItem
                                 key={opt.value}
                                 value={opt.value as string}
-                                onSelect={(currentValue) => {
-                                  setValue("cliente_id", currentValue);
+                                onSelect={() => {
+                                  setValue("cliente_id", opt.value);
                                   setValue("is_new_client", false);
                                   setOpenCliente(false);
+                                  const client = (clienteQuery.data?.data as any[])?.find(c => c.id === opt.value);
+                                  if (client) {
+                                    setSelectedCliente(client);
+                                  }
                                 }}
                               >
                                 <Check
@@ -548,7 +564,7 @@ export const CotizacionCreate = () => {
                   const lineSubtotal = qty * price;
                   
                   const selectedProductId = watchItems[index]?.producto_id;
-                  const selectedProduct = (productoQuery.data?.data as any[])?.find(p => p.sligo_id === selectedProductId);
+                  const selectedProduct = selectedProductsMap[selectedProductId] || (productoQuery.data?.data as any[])?.find(p => p.sligo_id === selectedProductId);
 
                   return (
                     <TableRow key={field.id}>
@@ -559,19 +575,25 @@ export const CotizacionCreate = () => {
                           render={({ field: { onChange, value } }) => (
                             <Popover 
                               open={openProductos[index]} 
-                              onOpenChange={(isOpen) => setOpenProductos(prev => ({...prev, [index]: isOpen}))}
+                              onOpenChange={(isOpen) => {
+                                setOpenProductos(prev => ({...prev, [index]: isOpen}));
+                                if (isOpen) {
+                                  onSearchProducto("");
+                                }
+                              }}
                             >
                               <PopoverTrigger 
                                 className={cn(buttonVariants({ variant: "outline" }), "w-full justify-between font-mono text-xs")}
                               >
                                   {value
-                                    ? productoOptions?.find((opt) => opt.value === value)?.label || "Desconocido"
+                                    ? selectedProductsMap[value]?.code || productoOptions?.find((opt) => opt.value === value)?.label || "Desconocido"
                                     : "Buscar SKU..."}
                                   <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                               </PopoverTrigger>
                               <PopoverContent className="w-[400px] p-0" align="start">
                                 <Command
                                   shouldFilter={false}
+                                  filter={() => 1}
                                 >
                                   <CommandInput 
                                     placeholder="Buscar por SKU o Descripción..." 
@@ -586,13 +608,14 @@ export const CotizacionCreate = () => {
                                           <CommandItem
                                             key={opt.value}
                                             value={opt.value as string}
-                                            onSelect={(currentValue) => {
-                                              onChange(currentValue);
+                                            onSelect={() => {
+                                              onChange(opt.value);
                                               setOpenProductos(prev => ({...prev, [index]: false}));
-                                              // Auto-fill price
-                                              const prod = (productoQuery.data?.data as any[])?.find((p: any) => p.sligo_id === currentValue);
+                                              // Auto-fill price & save to map
+                                              const prod = (productoQuery.data?.data as any[])?.find((p: any) => p.sligo_id === opt.value);
                                               if (prod) {
                                                 setValue(`items.${index}.precio_unitario`, prod.precio);
+                                                setSelectedProductsMap(prev => ({ ...prev, [opt.value]: prod }));
                                               }
                                             }}
                                           >

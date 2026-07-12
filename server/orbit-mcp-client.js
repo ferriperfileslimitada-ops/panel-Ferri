@@ -18,7 +18,7 @@ class OrbitMCPClientManager {
     this.connectionPromise = (async () => {
       try {
         const { Client } = await import('@modelcontextprotocol/sdk/client/index.js');
-        const { SSEClientTransport } = await import('@modelcontextprotocol/sdk/client/sse.js');
+        const { StreamableHTTPClientTransport } = await import('@modelcontextprotocol/sdk/client/streamableHttp.js');
 
         const urlStr = process.env.ORBIT_MCP_URL || 'https://siigo.adsbigger.cloud/mcp/3334ff19-664c-442d-ad0f-a9308c8d4cab';
         const apiKey = process.env.ORBIT_MCP_API_KEY;
@@ -28,8 +28,7 @@ class OrbitMCPClientManager {
         }
 
         const headers = {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json, text/event-stream'
+          'Content-Type': 'application/json'
         };
         
         if (apiKey) {
@@ -38,7 +37,7 @@ class OrbitMCPClientManager {
 
         const url = new URL(urlStr);
 
-        this.transport = new SSEClientTransport(url, {
+        this.transport = new StreamableHTTPClientTransport(url, {
           requestInit: {
             headers,
           },
