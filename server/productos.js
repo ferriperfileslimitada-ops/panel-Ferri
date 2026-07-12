@@ -38,9 +38,11 @@ router.post('/', async (req, res) => {
     }
 
     // 2. Create in Supabase
+    // Map sku to code as per Supabase schema
+    const { sku, sligo_id, ...restProductData } = productData;
     const { data, error } = await supabase
       .from('productos')
-      .insert([{ ...productData, sligo_id: siigoId }]) // Note: sligo_id might be a typo in DB schema but preserving it
+      .insert([{ ...restProductData, code: sku, sligo_id: siigoId }]) 
       .select()
       .single();
 
@@ -53,19 +55,20 @@ router.post('/', async (req, res) => {
 
 router.put('/:id', async (req, res) => {
   try {
-    const { id } = req.params; // This is the sligo_id
+    const { id } = req.params; // This is now the supa_id
     const { stock, precio } = req.body;
 
-    // 1. Fetch current product from Supabase to check previous stock
-    const { data: currentProduct } = await supabase.from('productos').select('*').eq('sligo_id', id).single();
+    // 1. Fetch current product from Supabase to check previous stock and get sligo_id
+    const { data: currentProduct } = await supabase.from('productos').select('*').eq('supa_id', id).single();
     if (!currentProduct) {
       return res.status(404).json({ error: "Producto no encontrado en la base de datos local." });
     }
+    const siigoId = currentProduct.sligo_id;
 
     // 2. Update Siigo Price if changed
-    if (precio !== undefined && precio !== currentProduct.precio && id) {
+    if (precio !== undefined && precio !== currentProduct.precio && siigoId) {
       try {
-        await updateSiigoProduct(id, {
+        await updateSiigoProduct(siigoId, {
           prices: [{ currency_code: "COP", price_list: [{ position: 1, value: precio }] }]
         });
       } catch (e) {
@@ -74,7 +77,7 @@ router.put('/:id', async (req, res) => {
     }
 
     // 3. Update Siigo Stock (Inventory Adjustment) if changed
-    if (stock !== undefined && stock !== currentProduct.stock && id) {
+    if (stock !== undefined && stock !== currentProduct.stock && siigoId) {
       const diff = stock - currentProduct.stock;
       try {
         // Attempt inventory adjustment. Note: This assumes Document Type 99 exists for adjustments.
@@ -84,7 +87,7 @@ router.put('/:id', async (req, res) => {
           document: { id: 25 }, // ID of voucher document type in Siigo (depends on account)
           date: date,
           items: [{
-            product: { id: id },
+            product: { id: siigoId },
             description: "Ajuste manual desde panel",
             quantity: diff,
             value: precio || currentProduct.precio
@@ -123,7 +126,7 @@ router.put('/:id', async (req, res) => {
     const { data, error } = await supabase
       .from('productos')
       .update(updates)
-      .eq('sligo_id', id)
+      .eq('supa_id', id)
       .select()
       .single();
 

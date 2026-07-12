@@ -19,7 +19,7 @@ export const Productos = () => {
 
   const { tableQuery } = useTable({
     resource: "productos",
-    pagination: { pageSize: 10000 },
+    pagination: { pageSize: 20 },
     sorters: { initial: [{ field: "stock", order: "asc" }] },
   });
   const { data, isLoading } = tableQuery;
@@ -43,7 +43,7 @@ export const Productos = () => {
   }, [data?.data, searchTerm]);
 
   const handleEditClick = (producto: any) => {
-    setEditingId(producto.sligo_id);
+    setEditingId(producto.supa_id);
     setEditStock(String(producto.stock ?? ""));
     setEditPrecio(String(producto.precio ?? ""));
   };
@@ -162,11 +162,11 @@ export const Productos = () => {
                   <TableRow><TableCell colSpan={5} className="text-center py-10">{searchTerm ? "Sin resultados para esta búsqueda." : "No se encontraron productos."}</TableCell></TableRow>
                 ) : (
                   filteredData.map((producto: any) => (
-                    <TableRow key={producto.sligo_id}>
+                    <TableRow key={producto.supa_id}>
                       <TableCell className="font-medium">{producto.sku}</TableCell>
                       <TableCell>{producto.nombre}</TableCell>
                       <TableCell className="text-right">
-                        {editingId === producto.sligo_id ? (
+                        {editingId && editingId === producto.supa_id ? (
                           <Input
                             type="number"
                             className="w-28 text-right ml-auto"
@@ -178,7 +178,7 @@ export const Productos = () => {
                         )}
                       </TableCell>
                       <TableCell className="text-right">
-                        {editingId === producto.sligo_id ? (
+                        {editingId && editingId === producto.supa_id ? (
                           <Input
                             type="number"
                             className="w-24 text-right ml-auto"
@@ -193,23 +193,22 @@ export const Productos = () => {
                         )}
                       </TableCell>
                       <TableCell className="text-center">
-                        {editingId === producto.sligo_id ? (
+                        {editingId && editingId === producto.supa_id ? (
                           <div className="flex justify-center space-x-2">
                             <Button
                               size="icon"
                               variant="ghost"
                               className="h-8 w-8 text-green-600"
-                              onClick={() => handleSaveClick(producto.sligo_id)}
+                              onClick={() => handleSaveClick(producto.supa_id)}
                             >
-                              <Save className="h-4 w-4" />
+                              <Save className="h-4 w-4 text-green-600" />
                             </Button>
                             <Button
                               size="icon"
                               variant="ghost"
-                              className="h-8 w-8 text-destructive"
                               onClick={() => setEditingId(null)}
                             >
-                              <X className="h-4 w-4" />
+                              <X className="h-4 w-4 text-red-600" />
                             </Button>
                           </div>
                         ) : (

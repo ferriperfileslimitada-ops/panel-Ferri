@@ -1,7 +1,5 @@
 import { useList, useUpdate } from "@refinedev/core";
 import { useState, useMemo } from "react";
-import { DndContext, useDroppable, useDraggable, DragEndEvent } from "@dnd-kit/core";
-import { CSS } from "@dnd-kit/utilities";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -40,151 +38,6 @@ export const Despachos = () => {
   });
 
   const { mutate: updateDespacho } = useUpdate();
-
-  const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-    if (!over) return;
-
-    const despachoId = active.id;
-    const nuevoEstado = over.id;
-
-    const despacho = filteredData.find((d: any) => d.id === despachoId);
-    if (!despacho || despacho.estado === nuevoEstado) return;
-
-    // Actualizamos optimísticamente en Refine y mandamos el estado
-    updateDespacho({
-      resource: "despachos",
-      id: despacho.id,
-      values: { estado: nuevoEstado },
-    }, {
-      onSuccess: async () => {
-        refetch();
-        try {
-          const apiUrl = import.meta.env.DEV ? "http://localhost:3001/api/despacho-status" : "/api/despacho-status";
-          await fetch(apiUrl, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              estado: nuevoEstado,
-              clienteEmail: despacho.cliente_id?.email || "",
-              clienteName: despacho.cliente_id?.name || "Cliente",
-              quoteNumero: despacho.cotizacion_id?.numero,
-              despachoId: despacho.id,
-            }),
-          });
-          toast.success(`Pedido movido a "${COLUMNAS.find((c: any) => c.id === nuevoEstado)?.label}". Correo enviado.`);
-        } catch {
-          toast.warning("Estado actualizado, pero falló el envío del correo.");
-        }
-      },
-      onError: () => toast.error("Error al actualizar el estado."),
-    });
-  };
-
-  const DraggableCard = ({ d, idxActual, moverDespacho, setEditDespacho, setNotas, setViewDespacho }: any) => {
-    const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
-      id: d.id,
-      data: d,
-    });
-    
-    const style = {
-      transform: CSS.Translate.toString(transform),
-      opacity: isDragging ? 0.5 : 1,
-      zIndex: isDragging ? 50 : 1,
-    };
-
-    const cot = d.cotizacion_id;
-    const itemsCount = cot?.items?.length || 0;
-
-    return (
-      <div ref={setNodeRef} style={style} {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing pb-3">
-        {/* Render Card here */}
-        <Card className="hover:shadow-md transition-shadow dark:bg-slate-900 border-slate-200 dark:border-slate-800">
-          <CardHeader className="p-3 pb-0">
-            <div className="flex justify-between items-start mb-2">
-              <Badge variant="outline" className="font-mono text-xs bg-slate-100 dark:bg-slate-800 pointer-events-none">
-                {cot?.numero ? `#${cot.numero}` : "Sin Cot."}
-              </Badge>
-              <div className="flex gap-1" onPointerDown={(e) => e.stopPropagation()}>
-                <Button size="icon" variant="ghost" className="h-6 w-6 text-slate-500 hover:text-primary" onClick={(e) => { e.stopPropagation(); setViewDespacho(d); }} title="Ver detalles">
-                  <Eye className="h-3.5 w-3.5" />
-                </Button>
-                <Button size="icon" variant="ghost" className="h-6 w-6 text-slate-500 hover:text-amber-600" onClick={(e) => { e.stopPropagation(); setEditDespacho(d); setNotas(d.notas || ""); }} title="Añadir notas">
-                  <Edit3 className="h-3.5 w-3.5" />
-                </Button>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent className="p-3 pt-1 pointer-events-none">
-            <div className="text-sm space-y-1.5">
-              <div className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300">
-                <User className="h-3.5 w-3.5 text-slate-400" />
-                <span className="font-medium truncate" title={d.cliente_id?.name}>{d.cliente_id?.name || "Sin Cliente"}</span>
-              </div>
-              <div className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 text-xs mt-2">
-                <Package className="h-3 w-3" />
-                <span>{itemsCount} item{itemsCount !== 1 ? 's' : ''}</span>
-              </div>
-              <div className="flex justify-between items-end mt-2 pt-2 border-t border-slate-100 dark:border-slate-800">
-                <div className="text-[10px] text-slate-400 flex flex-col">
-                  <span>Creado</span>
-                  <span>{new Date(d.created_at).toLocaleDateString('es-CO', {day:'2-digit', month:'short'})}</span>
-                </div>
-                <span className="font-bold text-foreground">{formatMoney(cot?.total || 0)}</span>
-              </div>
-            </div>
-
-            {d.notas && (
-              <div className="bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-200 text-[10px] p-1.5 rounded border border-amber-200 mt-2 line-clamp-2">
-                {d.notas}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-    );
-  };
-
-  const DroppableColumn = ({ col, tarjetas, moverDespacho, setEditDespacho, setNotas, setViewDespacho }: any) => {
-    const { setNodeRef, isOver } = useDroppable({
-      id: col.id,
-    });
-    
-    return (
-      <div className={`flex flex-col w-72 sm:w-80 shrink-0 rounded-xl border-2 ${isOver ? 'border-primary ring-2 ring-primary/20' : col.color} bg-white dark:bg-slate-950 shadow-sm overflow-hidden h-full transition-all`}>
-        <div className="flex items-center justify-between p-3 border-b border-inherit bg-inherit shrink-0">
-          <h2 className="font-bold text-sm sm:text-base">{col.label}</h2>
-          <span className={`inline-flex items-center justify-center min-w-[24px] h-6 px-2 rounded-full text-xs font-bold ${col.badge}`}>
-            {tarjetas.length}
-          </span>
-        </div>
-        <div ref={setNodeRef} className="flex-1 p-2 sm:p-3 overflow-y-auto space-y-3 min-h-[150px]">
-          {tarjetas.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center text-slate-400 opacity-60 p-6 text-center border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-lg">
-              <Package className="h-8 w-8 mb-2 opacity-50" />
-              <p className="text-xs font-medium">Sin pedidos aquí</p>
-              <p className="text-[10px]">Arrastra tarjetas a esta columna</p>
-            </div>
-          ) : (
-            tarjetas.map((d: any) => {
-              const idxActual = ORDEN.indexOf(d.estado);
-              return (
-                <DraggableCard 
-                  key={d.id} 
-                  d={d} 
-                  idxActual={idxActual} 
-                  moverDespacho={moverDespacho} 
-                  setEditDespacho={setEditDespacho}
-                  setNotas={setNotas}
-                  setViewDespacho={setViewDespacho}
-                />
-              );
-            })
-          )}
-        </div>
-      </div>
-    );
-  };
 
   // Filtrado local
   const filteredData = useMemo(() => {
@@ -286,27 +139,98 @@ export const Despachos = () => {
 
       {/* Kanban Board - Scrollable horizontally and vertically */}
       <div className="flex-1 overflow-auto rounded-lg border bg-slate-50/50 dark:bg-slate-900/20 p-2 sm:p-4">
-        <DndContext onDragEnd={handleDragEnd}>
         <div className="flex flex-nowrap gap-4 min-w-max h-full">
           {COLUMNAS.map((col) => {
             const tarjetas = despachosPorEstado(col.id);
             return (
-              <DroppableColumn 
-                key={col.id} 
-                col={col} 
-                tarjetas={tarjetas} 
-                moverDespacho={moverDespacho}
-                setEditDespacho={setEditDespacho}
-                setNotas={setNotas}
-                setViewDespacho={setViewDespacho}
-              />
+              <div key={col.id} className={`flex flex-col w-72 sm:w-80 shrink-0 rounded-xl border-2 ${col.color} bg-white dark:bg-slate-950 shadow-sm overflow-hidden h-full`}>
+                <div className="flex items-center justify-between p-3 border-b border-inherit bg-inherit shrink-0">
+                  <h2 className="font-bold text-sm sm:text-base">{col.label}</h2>
+                  <span className={`inline-flex items-center justify-center min-w-[24px] h-6 px-2 rounded-full text-xs font-bold ${col.badge}`}>
+                    {tarjetas.length}
+                  </span>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-3">
+                  {tarjetas.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center h-full text-muted-foreground opacity-60 min-h-[200px]">
+                      <Package className="h-10 w-10 mb-2 opacity-40" />
+                      <span className="text-sm font-medium">Sin pedidos</span>
+                    </div>
+                  ) : (
+                    tarjetas.map((d: any) => {
+                      const idxActual = ORDEN.indexOf(d.estado);
+                      const cot = d.cotizacion_id;
+                      const cli = d.cliente_id;
+                      return (
+                        <Card key={d.id} className="shadow-sm hover:shadow-md transition-all border-l-4 border-l-primary group bg-white dark:bg-slate-900">
+                          <CardHeader className="pb-2 pt-3 px-3">
+                            <div className="flex items-center justify-between">
+                              <CardTitle className="text-sm font-bold flex items-center gap-1.5">
+                                <span className={`w-2 h-2 rounded-full ${col.dot}`} />
+                                #{cot?.numero || "—"}
+                              </CardTitle>
+                              <div className="flex items-center gap-1 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity">
+                                <Button size="icon" variant="ghost" className="h-6 w-6 text-blue-600 hover:bg-blue-100" onClick={() => setViewDespacho(d)}>
+                                  <Eye className="h-3.5 w-3.5" />
+                                </Button>
+                                <Button size="icon" variant="ghost" className="h-6 w-6 text-amber-600 hover:bg-amber-100" onClick={() => { setEditDespacho(d); setNotas(d.notas || ""); }}>
+                                  <Edit3 className="h-3.5 w-3.5" />
+                                </Button>
+                              </div>
+                            </div>
+                          </CardHeader>
+                          <CardContent className="px-3 pb-3 space-y-2">
+                            <div className="flex flex-col gap-1 text-xs">
+                              <div className="flex items-start gap-1.5 text-muted-foreground">
+                                <User className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                                <span className="font-semibold text-foreground line-clamp-1" title={cli?.name}>{cli?.name || "—"}</span>
+                              </div>
+                              <div className="flex items-center gap-1.5 text-muted-foreground pl-5">
+                                <span>NIT: {cli?.identification || "—"}</span>
+                              </div>
+                              <div className="flex items-center gap-1.5 text-muted-foreground mt-1">
+                                <DollarSign className="h-3.5 w-3.5 shrink-0" />
+                                <span className="font-bold text-foreground">{formatMoney(cot?.total || 0)}</span>
+                              </div>
+                            </div>
+
+                            {d.notas && (
+                              <div className="bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-200 text-[10px] p-1.5 rounded border border-amber-200 mt-2 line-clamp-2">
+                                {d.notas}
+                              </div>
+                            )}
+
+                            <div className="flex gap-1.5 pt-3 mt-2 border-t">
+                              {idxActual > 0 ? (
+                                <Button size="sm" variant="outline" className="flex-1 h-7 text-[11px] px-1 bg-slate-50 hover:bg-slate-100" onClick={() => moverDespacho(d, "prev")}>
+                                  <ArrowLeft className="h-3 w-3 mr-1" /> Atrás
+                                </Button>
+                              ) : <div className="flex-1" />}
+                              
+                              {idxActual < ORDEN.length - 1 ? (
+                                <Button size="sm" className="flex-1 h-7 text-[11px] px-1" onClick={() => moverDespacho(d, "next")}>
+                                  Avanzar <ArrowRight className="h-3 w-3 ml-1" />
+                                </Button>
+                              ) : (
+                                <Badge variant="outline" className="flex-1 justify-center h-7 text-[11px] text-green-700 bg-green-50 border-green-300">
+                                  Completado ✓
+                                </Badge>
+                              )}
+                            </div>
+                          </CardContent>
+                        </Card>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
             );
           })}
         </div>
-        </DndContext>
       </div>
 
-      {/* Modal Visoror Completo */}
+      {/* Modal Visor Completo */}
       <Dialog open={!!viewDespacho} onOpenChange={(open) => !open && setViewDespacho(null)}>
         <DialogContent className="max-w-[95vw] sm:max-w-[650px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>

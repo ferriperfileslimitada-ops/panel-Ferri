@@ -20,7 +20,7 @@ export const Clientes = () => {
 
   const { tableQuery } = useTable({
     resource: "clientes",
-    pagination: { pageSize: 10000 },
+    pagination: { pageSize: 20 },
     sorters: { initial: [{ field: "name", order: "asc" }] },
   });
 
