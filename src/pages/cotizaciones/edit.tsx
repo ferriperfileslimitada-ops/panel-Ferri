@@ -85,13 +85,22 @@ export const CotizacionEdit = () => {
     ],
   });
 
-  const { options: productoOptions, query: productoQuery } = useSelect({
+  const { options: productoOptions, query: productoQuery, onSearch: onSearchProducto } = useSelect({
     resource: "productos",
     optionLabel: "sku",
     optionValue: "sligo_id",
     sorters: [{ field: "nombre", order: "asc" }],
-    pagination: { pageSize: 1000 },
-    meta: { select: "*" }
+    pagination: { pageSize: 50 },
+    meta: { select: "*" },
+    onSearch: (value) => [
+      {
+        operator: "or",
+        value: [
+          { field: "sku", operator: "contains", value },
+          { field: "nombre", operator: "contains", value },
+        ],
+      },
+    ],
   });
 
   useEffect(() => {
@@ -612,16 +621,12 @@ export const CotizacionEdit = () => {
                               </PopoverTrigger>
                               <PopoverContent className="w-[400px] p-0" align="start">
                                 <Command
-                                  filter={(val, search) => {
-                                    if (!search) return 1;
-                                    const prod = (productoQuery.data?.data as any[])?.find(p => p.sligo_id === val);
-                                    if (!prod) return 0;
-                                    const s = search.toLowerCase();
-                                    if (prod.sku?.toLowerCase().includes(s) || prod.nombre?.toLowerCase().includes(s)) return 1;
-                                    return 0;
-                                  }}
+                                  shouldFilter={false}
                                 >
-                                  <CommandInput placeholder="Buscar por SKU o Descripción..." />
+                                  <CommandInput 
+                                    placeholder="Buscar por SKU o Descripción..." 
+                                    onValueChange={(val) => onSearchProducto(val)}
+                                  />
                                   <CommandList>
                                     <CommandEmpty>No se encontró el producto.</CommandEmpty>
                                     <CommandGroup>
