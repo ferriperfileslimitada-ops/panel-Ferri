@@ -54,52 +54,24 @@ export const Clientes = () => {
 
     setIsCreatingClient(true);
     try {
-      let siigoCustomerId = null;
-      // --- Integración Siigo ---
-      try {
-        const siigoApiUrl = import.meta.env.DEV ? "http://localhost:3001/api/siigo/customers" : "/api/siigo/customers";
-        const res = await fetch(siigoApiUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            type: "Customer",
-            person_type: "Company",
-            id_type: "31",
-            identification: newClientData.identification,
-            name: [newClientData.name],
-            contacts: [{
-              first_name: newClientData.name.substring(0, 50),
-              last_name: "",
-              email: newClientData.email || ""
-            }],
-            phones: [{ number: newClientData.telefono || "0000000" }]
-          })
-        });
-        if (res.ok) {
-          const siigoData = await res.json();
-          siigoCustomerId = siigoData.id;
-        } else {
-           console.error("Siigo Client Error:", await res.text());
-           toast.warning("El cliente no se pudo crear en Siigo, pero se guardará localmente.");
-        }
-      } catch (err) {
-        console.error("Siigo Error:", err);
-      }
+      const API_URL = import.meta.env.VITE_API_URL || (window.location.origin.includes('localhost') ? 'http://localhost:3001' : window.location.origin);
       
-      const { error: clientError } = await supabaseClient
-        .from("clientes")
-        .insert({
+      const response = await fetch(`${API_URL}/api/clientes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
           name: newClientData.name,
           identification: newClientData.identification,
           email: newClientData.email || null,
           "Telefono": newClientData.telefono ? Number(newClientData.telefono) : null,
           city: newClientData.city || null,
-          siigo_id: siigoCustomerId
-        });
+          tipo: "Empresa"
+        })
+      });
 
-      if (clientError) throw clientError;
+      if (!response.ok) throw new Error(await response.text());
       
-      toast.success("Cliente creado exitosamente");
+      toast.success("Cliente creado exitosamente en Siigo y Supabase");
       setIsCreateModalOpen(false);
       setNewClientData({ name: "", identification: "", email: "", telefono: "", city: "" });
       tableQuery.refetch(); 

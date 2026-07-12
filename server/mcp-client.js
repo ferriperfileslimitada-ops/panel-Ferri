@@ -1,5 +1,3 @@
-const { Client } = require('@modelcontextprotocol/sdk/client/index.js');
-const { SSEClientTransport } = require('@modelcontextprotocol/sdk/client/sse.js');
 const dotenv = require('dotenv');
 
 dotenv.config();
@@ -18,7 +16,15 @@ class MCPClientManager {
 
     this.connectionPromise = (async () => {
       try {
-        const url = process.env.ORBIT_MCP_URL || 'https://siigo.adsbigger.cloud/sse';
+        // Dynamic import because @modelcontextprotocol/sdk is ESM only
+        const { Client } = await import('@modelcontextprotocol/sdk/client/index.js');
+        const { StreamableHTTPClientTransport } = await import('@modelcontextprotocol/sdk/client/streamableHttp.js');
+
+        // URL must point to the Streamable HTTP endpoint, usually just /mcp or similar.
+        // We'll replace /sse with /mcp if it exists in the url.
+        let urlStr = process.env.ORBIT_MCP_URL || 'https://siigo.adsbigger.cloud/mcp';
+        urlStr = urlStr.replace(/\/sse\/?$/, '/mcp'); 
+        
         const apiKey = process.env.ORBIT_MCP_API_KEY;
 
         const headers = {};
@@ -26,13 +32,9 @@ class MCPClientManager {
           headers['Authorization'] = `Bearer ${apiKey}`;
         }
 
-        const sseUrl = new URL(url);
-        // Ensure we connect to the SSE endpoint
-        if (!sseUrl.pathname.endsWith('/sse')) {
-          sseUrl.pathname = sseUrl.pathname.replace(/\/+$/, '') + '/sse';
-        }
+        const url = new URL(urlStr);
 
-        this.transport = new SSEClientTransport(sseUrl, {
+        this.transport = new StreamableHTTPClientTransport(url, {
           requestInit: {
             headers,
           },
@@ -50,7 +52,7 @@ class MCPClientManager {
 
         await this.client.connect(this.transport);
         this.connected = true;
-        console.log('MCP Client connected to', sseUrl.toString());
+        console.log('MCP Client connected to', url.toString(), 'via StreamableHTTP');
       } catch (error) {
         this.connectionPromise = null;
         console.error('Failed to connect MCP Client:', error);

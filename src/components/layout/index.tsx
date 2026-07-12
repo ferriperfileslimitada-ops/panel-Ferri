@@ -1,10 +1,11 @@
 import React, { PropsWithChildren } from "react";
-import { useMenu, useLogout, useIsAuthenticated, useGetIdentity } from "@refinedev/core";
-import { Link, Outlet } from "react-router";
+import { useMenu, useLogout, useGetIdentity } from "@refinedev/core";
+import { Link } from "react-router";
 import { LogOut, Package, Users, FileText, Truck, BarChart3, Menu as MenuIcon } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { ThemeProvider } from "@/components/theme-provider";
+import { ChatWidget } from "@/components/chat-widget";
 
 const icons: Record<string, React.ReactNode> = {
   productos: <Package className="h-5 w-5" />,
@@ -47,16 +48,6 @@ export const Layout: React.FC<PropsWithChildren> = ({ children }) => {
         <h3 className="mb-2 px-2 text-xs font-semibold tracking-tight text-muted-foreground uppercase">
           Herramientas
         </h3>
-        <Link
-          to="/asistente"
-          className={buttonVariants({
-            variant: "ghost",
-            className: "w-full justify-start mb-1"
-          })}
-        >
-          <span className="h-5 w-5 mr-3 text-xl leading-none">🤖</span>
-          Asistente AI
-        </Link>
         <Link
           to="/herramientas/procesar-factura"
           className={buttonVariants({
@@ -113,6 +104,7 @@ export const Layout: React.FC<PropsWithChildren> = ({ children }) => {
               {children}
             </div>
           </main>
+          <ChatWidget />
         </div>
       </div>
     </ThemeProvider>

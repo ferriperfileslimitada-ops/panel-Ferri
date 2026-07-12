@@ -26,8 +26,14 @@ app.use(express.static(path.join(__dirname, '../dist')));
 
 const siigo = require('./siigo');
 const chatRouter = require('./chat');
+const productosRouter = require('./productos');
+const clientesRouter = require('./clientes');
+const siigoRoutes = require('./siigo-routes');
 
 app.use('/api/chat', chatLimiter, chatRouter);
+app.use('/api/productos', productosRouter);
+app.use('/api/clientes', clientesRouter);
+app.use('/api/siigo', siigoRoutes);
 
 
 const transporter = nodemailer.createTransport({

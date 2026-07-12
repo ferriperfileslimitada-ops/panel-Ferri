@@ -110,9 +110,65 @@ async function updateSiigoQuotation(id, quoteData) {
   return await response.json();
 }
 
+async function createSiigoProduct(productData) {
+  const token = await getSiigoToken();
+  const response = await fetch('https://api.siigo.com/v1/products', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    },
+    body: JSON.stringify(productData)
+  });
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Error creando producto en Siigo: ${response.status} ${errorText}`);
+  }
+  return await response.json();
+}
+
+async function updateSiigoProduct(id, productData) {
+  const token = await getSiigoToken();
+  const response = await fetch(`https://api.siigo.com/v1/products/${id}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    },
+    body: JSON.stringify(productData)
+  });
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Error actualizando producto en Siigo: ${response.status} ${errorText}`);
+  }
+  return await response.json();
+}
+
+async function createSiigoInventoryAdjustment(adjustmentData) {
+  const token = await getSiigoToken();
+  // Document type is usually 'voucher' with type 'Ajuste' or similar. 
+  // Let's use the standard voucher endpoint. Note: requires valid Document Id.
+  const response = await fetch('https://api.siigo.com/v1/vouchers', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    },
+    body: JSON.stringify(adjustmentData)
+  });
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Error creando ajuste de inventario en Siigo: ${response.status} ${errorText}`);
+  }
+  return await response.json();
+}
+
 module.exports = {
   createSiigoCustomer,
   updateSiigoCustomer,
   createSiigoQuotation,
-  updateSiigoQuotation
+  updateSiigoQuotation,
+  createSiigoProduct,
+  updateSiigoProduct,
+  createSiigoInventoryAdjustment
 };

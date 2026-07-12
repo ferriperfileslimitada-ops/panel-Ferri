@@ -48,7 +48,9 @@ export const Productos = () => {
     setEditPrecio(String(producto.precio ?? ""));
   };
 
-  const handleSaveClick = (id: string) => {
+  const API_URL = import.meta.env.VITE_API_URL || (window.location.origin.includes('localhost') ? 'http://localhost:3001' : window.location.origin);
+
+  const handleSaveClick = async (id: string) => {
     const newStock = parseFloat(editStock);
     const newPrecio = parseFloat(editPrecio);
 
@@ -61,26 +63,21 @@ export const Productos = () => {
       return;
     }
 
-    updateProduct(
-      {
-        resource: "productos",
-        id,
-        values: { stock: newStock, precio: newPrecio },
-        meta: { idColumnName: "sligo_id" },
-      },
-      {
-        onSuccess: () => {
-          toast.success("Producto actualizado en Supabase ✅");
-          setEditingId(null);
-        },
-        onError: (error) => {
-          toast.error("Error al actualizar: " + error.message);
-        },
-      }
-    );
+    try {
+      const response = await fetch(`${API_URL}/api/productos/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stock: newStock, precio: newPrecio })
+      });
+      if (!response.ok) throw new Error(await response.text());
+      toast.success("Producto actualizado en Siigo y Supabase ✅");
+      setEditingId(null);
+    } catch (error: any) {
+      toast.error("Error al actualizar: " + error.message);
+    }
   };
 
-  const handleCreateProduct = () => {
+  const handleCreateProduct = async () => {
     const precio = parseFloat(newProduct.precio);
     const stock = parseFloat(newProduct.stock);
 
@@ -97,27 +94,24 @@ export const Productos = () => {
       return;
     }
 
-    createProduct(
-      {
-        resource: "productos",
-        values: {
+    try {
+      const response = await fetch(`${API_URL}/api/productos`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
           sku: newProduct.sku.trim(),
           nombre: newProduct.nombre.trim(),
           precio,
           stock,
-        },
-      },
-      {
-        onSuccess: () => {
-          toast.success("Producto creado en Supabase ✅");
-          setShowCreate(false);
-          setNewProduct({ sku: "", nombre: "", precio: "", stock: "" });
-        },
-        onError: (error) => {
-          toast.error("Error al crear producto: " + error.message);
-        },
-      }
-    );
+        })
+      });
+      if (!response.ok) throw new Error(await response.text());
+      toast.success("Producto creado en Siigo y Supabase ✅");
+      setShowCreate(false);
+      setNewProduct({ sku: "", nombre: "", precio: "", stock: "" });
+    } catch (error: any) {
+      toast.error("Error al crear producto: " + error.message);
+    }
   };
 
   const formatMoney = (v: number) =>
