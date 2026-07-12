@@ -56,15 +56,16 @@ const convertMcpToolToOpenAITool = (tool) => {
 };
 
 const SYSTEM_PROMPT = `Eres el "Asistente Ferriperfiles", un experto operativo integrado en el panel de administración. 
-Ayudas al equipo a consultar y operar Siigo a través de herramientas (tools).
+Ayudas al equipo a consultar y operar Siigo y la base de datos local sincronizada a través de herramientas (tools).
 Responde SIEMPRE en español colombiano de forma clara, directa y profesional.
 
 Reglas críticas:
-1. No inventes datos. Si no hay resultados de Siigo, dilo.
-2. Si un usuario te pide actualizar el stock (existencias) directamente, explícale claramente que "Siigo no expone un método público (endpoint) para fijar el stock directamente. Las existencias se actualizan a través de documentos de inventario (compras, ventas, ajustes)."
-3. Si creas una cotización, muestra claramente el ID y Número de cotización que retorna Siigo.
-4. Para listar productos, clientes, cotizaciones o bodegas, si obtienes una lista, muestra un resumen amigable. El frontend lo renderizará como tarjetas si la respuesta es estructurada, pero tú responde el resumen en texto.
-5. No pidas confirmación tú mismo: el sistema lo hará automáticamente si usas herramientas de escritura.
+1. Para responder a consultas de información sobre productos (existencias, stock, precios, códigos) o clientes (NIT, teléfonos, correos, nombres, dirección), usa exclusivamente las herramientas de base de datos local ("db_search_products" y "db_search_customers"). NO utilices las herramientas de lectura de Siigo (MCP) para esto, ya que el panel está sincronizado y es más rápido.
+2. Solo debes utilizar las herramientas de Siigo (MCP) para tareas que requieran CREAR o ACTUALIZAR datos (como crear clientes en Siigo, actualizar precios en Siigo, o generar cotizaciones).
+3. Si un usuario te pide actualizar el stock (existencias) directamente, explícale claramente que "Siigo no expone un método público (endpoint) para fijar el stock directamente. Las existencias se actualizan a través de documentos de inventario (compras, ventas, ajustes)."
+4. Si creas una cotización, muestra claramente el ID y Número de cotización que retorna Siigo.
+5. Para listar productos o clientes, muestra un resumen amigable. El frontend lo renderizará como tarjetas si la respuesta es estructurada, pero tú responde el resumen en texto.
+6. No pidas confirmación tú mismo: el sistema lo hará automáticamente si usas herramientas de escritura de Siigo.
 `;
 
 router.post('/', authMiddleware, async (req, res) => {
@@ -79,9 +80,21 @@ router.post('/', authMiddleware, async (req, res) => {
     const userRole = req.role;
     
     // Filter tools by role
-    const allowedTools = tools.filter(t => 
-      rolePermissions[userRole]?.includes('*') || rolePermissions[userRole]?.includes(t.name)
-    );
+    const allowedTools = tools.filter(t => {
+      const hasPermission = rolePermissions[userRole]?.includes('*') || rolePermissions[userRole]?.includes(t.name);
+      if (!hasPermission) return false;
+      
+      // Exclude read-only MCP tools for products and clients to force using local DB
+      const isReadOnlyMcpProductOrClient = 
+        t.name.startsWith('siigo_list_products') ||
+        t.name.startsWith('siigo_get_product') ||
+        t.name.startsWith('siigo_search_products') ||
+        t.name.startsWith('siigo_list_customers') ||
+        t.name.startsWith('siigo_get_customer') ||
+        t.name.startsWith('siigo_search_customers');
+      
+      return !isReadOnlyMcpProductOrClient;
+    });
 
     // If there is a confirmed action from the user, execute it directly
     if (confirmed_action) {
@@ -137,7 +150,47 @@ router.post('/', authMiddleware, async (req, res) => {
       { role: 'user', content: message }
     ];
 
-    const openaiTools = allowedTools.map(convertMcpToolToOpenAITool);
+    const dbTools = [
+      {
+        type: 'function',
+        function: {
+          name: 'db_search_products',
+          description: 'Busca productos en la base de datos local del panel. Úsalo para responder preguntas sobre existencias (stock), precios de venta o descripciones de productos de Ferriperfiles.',
+          parameters: {
+            type: 'object',
+            properties: {
+              query: {
+                type: 'string',
+                description: 'Texto a buscar (nombre del producto o SKU/código).'
+              }
+            },
+            required: ['query']
+          }
+        }
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'db_search_customers',
+          description: 'Busca clientes en la base de datos local del panel. Úsalo para responder cualquier pregunta sobre información de clientes, NIT/cédula, correos, teléfonos o direcciones.',
+          parameters: {
+            type: 'object',
+            properties: {
+              query: {
+                type: 'string',
+                description: 'Texto a buscar (nombre/razón social, NIT/cédula o email).'
+              }
+            },
+            required: ['query']
+          }
+        }
+      }
+    ];
+
+    const openaiTools = [
+      ...dbTools,
+      ...allowedTools.map(convertMcpToolToOpenAITool)
+    ];
 
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
@@ -153,6 +206,84 @@ router.post('/', authMiddleware, async (req, res) => {
       const toolCall = responseMessage.tool_calls[0];
       const toolName = toolCall.function.name;
       const toolArgs = JSON.parse(toolCall.function.arguments);
+
+      if (toolName === 'db_search_products') {
+        try {
+          const { query } = toolArgs;
+          const { data, error } = await supabase
+            .from('productos')
+            .select('*')
+            .or(`code.ilike.%${query}%,nombre.ilike.%${query}%`)
+            .limit(25);
+          
+          if (error) throw error;
+          
+          messages.push(responseMessage);
+          messages.push({
+            role: 'tool',
+            tool_call_id: toolCall.id,
+            name: toolName,
+            content: JSON.stringify(data || [])
+          });
+
+          const finalCompletion = await openai.chat.completions.create({
+            model: 'gpt-4o-mini',
+            messages,
+          });
+
+          return res.json({
+            role: 'assistant',
+            content: finalCompletion.choices[0].message.content,
+            executed_tool: toolName
+          });
+        } catch (err) {
+          console.error('Error in db_search_products:', err);
+          logger.logError('DB Search Products', err.message || err, err.stack);
+          return res.json({
+            role: 'assistant',
+            content: `Lo siento, hubo un problema al consultar la base de datos de productos: ${err.message}`
+          });
+        }
+      }
+
+      if (toolName === 'db_search_customers') {
+        try {
+          const { query } = toolArgs;
+          const { data, error } = await supabase
+            .from('clientes')
+            .select('*')
+            .or(`name.ilike.%${query}%,identification.ilike.%${query}%,email.ilike.%${query}%`)
+            .limit(25);
+          
+          if (error) throw error;
+          
+          messages.push(responseMessage);
+          messages.push({
+            role: 'tool',
+            tool_call_id: toolCall.id,
+            name: toolName,
+            content: JSON.stringify(data || [])
+          });
+
+          const finalCompletion = await openai.chat.completions.create({
+            model: 'gpt-4o-mini',
+            messages,
+          });
+
+          return res.json({
+            role: 'assistant',
+            content: finalCompletion.choices[0].message.content,
+            executed_tool: toolName
+          });
+        } catch (err) {
+          console.error('Error in db_search_customers:', err);
+          logger.logError('DB Search Customers', err.message || err, err.stack);
+          return res.json({
+            role: 'assistant',
+            content: `Lo siento, hubo un problema al consultar la base de datos de clientes: ${err.message}`
+          });
+        }
+      }
 
       if (requiresConfirmation(toolName)) {
         // Need user confirmation before executing
