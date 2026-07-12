@@ -1,7 +1,7 @@
 const express = require('express');
 const { createClient } = require('@supabase/supabase-js');
 const { OpenAI } = require('openai');
-const { mcpManager } = require('./mcp-client');
+const orbitMcpClient = require('./orbit-mcp-client');
 
 const router = express.Router();
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -94,7 +94,7 @@ router.post('/', authMiddleware, async (req, res) => {
       console.log(`Executing confirmed action: ${tool_name}`);
       let result;
       try {
-        result = await mcpManager.callTool(tool_name, tool_args);
+        result = await orbitMcpClient.callTool(tool_name, tool_args);
       } catch (err) {
         console.error(`Error in tool ${tool_name}:`, err);
         return res.json({
@@ -162,7 +162,7 @@ router.post('/', authMiddleware, async (req, res) => {
       } else {
         // Safe to execute immediately (Read-only)
         try {
-          const result = await mcpManager.callTool(toolName, toolArgs);
+          const result = await orbitMcpClient.callTool(toolName, toolArgs);
           
           messages.push(responseMessage);
           messages.push({

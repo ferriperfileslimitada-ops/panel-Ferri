@@ -411,6 +411,47 @@ app.put('/api/siigo/quotations/:id', async (req, res) => {
   }
 });
 
+// ORBIT MCP ENDPOINTS
+
+const orbitMcpClient = require('./orbit-mcp-client');
+
+app.get('/api/integrations/orbit/health', async (req, res) => {
+  try {
+    const connectStatus = await orbitMcpClient.safeConnect();
+    
+    if (!connectStatus.success) {
+      return res.status(502).json({ 
+        connected: false, 
+        error: connectStatus.error
+      });
+    }
+
+    const tools = await orbitMcpClient.listTools();
+    
+    let sampleReceived = false;
+    if (tools.find(t => t.name === 'siigo_list_products')) {
+       try {
+         const sample = await orbitMcpClient.callTool('siigo_list_products', { page: 1, page_size: 1 });
+         if (sample) sampleReceived = true;
+       } catch (err) {
+         console.error('Test tool call failed', err);
+       }
+    }
+
+    res.status(200).json({
+      connected: true,
+      toolsAvailable: tools.map(t => t.name),
+      sampleReceived
+    });
+  } catch (error) {
+    console.error('Orbit Health check failed', error);
+    res.status(500).json({
+      connected: false,
+      error: 'Error interno conectando con Orbit MCP'
+    });
+  }
+});
+
 // React Router Fallback
 app.get(/.*/, (req, res) => {
   res.sendFile(path.join(__dirname, '../dist', 'index.html'));
