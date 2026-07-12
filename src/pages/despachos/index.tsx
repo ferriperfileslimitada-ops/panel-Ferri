@@ -81,7 +81,7 @@ export const Despachos = () => {
     });
   };
 
-  const DraggableCard = ({ d, idxActual, moverDespacho, setEditDespacho, setNotas, setViewDespacho }: any) => {
+  const DraggableCard = ({ d, setEditDespacho, setNotas, setViewDespacho }: any) => {
     const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
       id: d.id,
       data: d,
@@ -145,7 +145,7 @@ export const Despachos = () => {
     );
   };
 
-  const DroppableColumn = ({ col, tarjetas, moverDespacho, setEditDespacho, setNotas, setViewDespacho }: any) => {
+  const DroppableColumn = ({ col, tarjetas, setEditDespacho, setNotas, setViewDespacho }: any) => {
     const { setNodeRef, isOver } = useDroppable({
       id: col.id,
     });
@@ -167,13 +167,10 @@ export const Despachos = () => {
             </div>
           ) : (
             tarjetas.map((d: any) => {
-              const idxActual = ORDEN.indexOf(d.estado);
               return (
                 <DraggableCard 
                   key={d.id} 
                   d={d} 
-                  idxActual={idxActual} 
-                  moverDespacho={moverDespacho} 
                   setEditDespacho={setEditDespacho}
                   setNotas={setNotas}
                   setViewDespacho={setViewDespacho}
@@ -202,41 +199,6 @@ export const Despachos = () => {
   const despachosPorEstado = (estado: string) =>
     filteredData.filter((d: any) => d.estado === estado);
 
-  const moverDespacho = async (despacho: any, direccion: "next" | "prev") => {
-    const idxActual = ORDEN.indexOf(despacho.estado);
-    const idxNuevo = direccion === "next" ? idxActual + 1 : idxActual - 1;
-    if (idxNuevo < 0 || idxNuevo >= ORDEN.length) return;
-
-    const nuevoEstado = ORDEN[idxNuevo];
-
-    updateDespacho({
-      resource: "despachos",
-      id: despacho.id,
-      values: { estado: nuevoEstado },
-    }, {
-      onSuccess: async () => {
-        refetch();
-        try {
-          const apiUrl = import.meta.env.DEV ? "http://localhost:3001/api/despacho-status" : "/api/despacho-status";
-          await fetch(apiUrl, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              estado: nuevoEstado,
-              clienteEmail: despacho.cliente_id?.email || "",
-              clienteName: despacho.cliente_id?.name || "Cliente",
-              quoteNumero: despacho.cotizacion_id?.numero,
-              despachoId: despacho.id,
-            }),
-          });
-          toast.success(`Pedido movido a "${COLUMNAS.find(c => c.id === nuevoEstado)?.label}". Correo enviado.`);
-        } catch {
-          toast.warning("Estado actualizado, pero falló el envío del correo.");
-        }
-      },
-      onError: () => toast.error("Error al actualizar el estado."),
-    });
-  };
 
   const handleSaveNotas = () => {
     if (!editDespacho) return;
@@ -295,7 +257,6 @@ export const Despachos = () => {
                 key={col.id} 
                 col={col} 
                 tarjetas={tarjetas} 
-                moverDespacho={moverDespacho}
                 setEditDespacho={setEditDespacho}
                 setNotas={setNotas}
                 setViewDespacho={setViewDespacho}
