@@ -98,9 +98,15 @@ router.post('/', authMiddleware, async (req, res) => {
         result = await orbitMcpClient.callTool(tool_name, tool_args);
       } catch (err) {
         console.error(`Error in tool ${tool_name}:`, err);
+        logger.logError('Orbit MCP Tool (Confirmed)', `Fallo al ejecutar herramienta ${tool_name}`, {
+          arguments: tool_args,
+          error: err.message || err,
+          stack: err.stack,
+          user: req.user?.email
+        });
         return res.json({
           role: 'assistant',
-          content: `Hubo un error de conexión con Siigo al intentar ejecutar la acción: ${err.message}. Por favor revisa los datos e intenta de nuevo.`
+          content: `Hubo un error de conexión con Siigo al intentar ejecutar la acción: ${err.message}. Por favor revisa los datos o consulta el Panel de Logs.`
         });
       }
 
@@ -186,9 +192,15 @@ router.post('/', authMiddleware, async (req, res) => {
 
         } catch (err) {
           console.error(`Error in tool ${toolName}:`, err);
+          logger.logError('Orbit MCP Tool (Safe)', `Fallo al ejecutar herramienta de lectura ${toolName}`, {
+            arguments: toolArgs,
+            error: err.message || err,
+            stack: err.stack,
+            user: req.user?.email
+          });
           return res.json({
             role: 'assistant',
-            content: `Lo siento, hubo un problema al consultar Siigo (${err.message}). Intenta más tarde.`
+            content: `Lo siento, hubo un problema al consultar Siigo (${err.message}). Intenta más tarde o revisa el Panel de Logs.`
           });
         }
       }
