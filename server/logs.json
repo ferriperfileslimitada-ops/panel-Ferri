@@ -1,0 +1,11 @@
+[
+  {
+    "id": "1783878330916tkd",
+    "timestamp": "2026-07-12T17:45:30.916Z",
+    "service": "Orbit MCP Client",
+    "message": "Streamable HTTP error: Error POSTing to endpoint: {\"error\":\"API key inválida para este cliente\"}",
+    "details": {
+      "stack": "Error: Streamable HTTP error: Error POSTing to endpoint: {\"error\":\"API key inválida para este cliente\"}\n    at StreamableHTTPClientTransport.send (file:///D:/Proyectos%20Programacion/Ferriperfiles%20Dashboard/ferriperfiles-dashboard/server/node_modules/@modelcontextprotocol/sdk/dist/esm/client/streamableHttp.js:364:23)\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)"
+    }
+  }
+]
