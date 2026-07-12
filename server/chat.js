@@ -2,6 +2,7 @@ const express = require('express');
 const { createClient } = require('@supabase/supabase-js');
 const { OpenAI } = require('openai');
 const orbitMcpClient = require('./orbit-mcp-client');
+const logger = require('./logger');
 
 const router = express.Router();
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -74,7 +75,7 @@ router.post('/', authMiddleware, async (req, res) => {
   }
 
   try {
-    const tools = await mcpManager.listTools();
+    const tools = await orbitMcpClient.listTools();
     const userRole = req.role;
     
     // Filter tools by role
@@ -200,6 +201,11 @@ router.post('/', authMiddleware, async (req, res) => {
 
   } catch (error) {
     console.error('Chat API Error:', error);
+    logger.logError('Chat API', error.message || 'Error en chat', {
+      stack: error.stack,
+      user: req.user?.email,
+      messageLength: message?.length
+    });
     res.status(500).json({ error: 'Internal server error during chat processing' });
   }
 });
