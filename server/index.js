@@ -9,14 +9,26 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 const path = require('path');
+const rateLimit = require('express-rate-limit');
 
 app.use(cors());
 app.use(express.json());
+
+// Rate Limiter para el chat
+const chatLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minuto
+  max: 20, // 20 requests per windowMs
+  message: { error: 'Demasiadas solicitudes. Por favor, espera un momento.' }
+});
 
 // Serve React static files from dist folder
 app.use(express.static(path.join(__dirname, '../dist')));
 
 const siigo = require('./siigo');
+const chatRouter = require('./chat');
+
+app.use('/api/chat', chatLimiter, chatRouter);
+
 
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_ADDRESS || 'smtp.gmail.com',

@@ -42,6 +42,18 @@ class SiigoClient:
         response.raise_for_status()
         return response.json()
 
+    def get_customers(self, page=1, page_size=50):
+        url = f"{SIIGO_BASE_URL}/v1/customers?page={page}&page_size={page_size}"
+        response = requests.get(url, headers=self._get_headers())
+        response.raise_for_status()
+        return response.json()
+
+    def get_customer(self, customer_id):
+        url = f"{SIIGO_BASE_URL}/v1/customers/{customer_id}"
+        response = requests.get(url, headers=self._get_headers())
+        response.raise_for_status()
+        return response.json()
+
     def update_product(self, product_id, data):
         url = f"{SIIGO_BASE_URL}/v1/products/{product_id}"
         response = requests.put(url, headers=self._get_headers(), json=data)

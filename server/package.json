@@ -11,9 +11,13 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@supabase/supabase-js": "^2.110.2",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
-    "nodemailer": "^9.0.1"
+    "express-rate-limit": "^8.5.2",
+    "nodemailer": "^9.0.1",
+    "openai": "^6.46.0"
   }
 }

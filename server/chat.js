@@ -1,0 +1,207 @@
+const express = require('express');
+const { createClient } = require('@supabase/supabase-js');
+const { OpenAI } = require('openai');
+const { mcpManager } = require('./mcp-client');
+
+const router = express.Router();
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+const SUPABASE_URL = process.env.VITE_SUPABASE_URL;
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+// Define allowed tools for each role
+const rolePermissions = {
+  solo_lectura: ['siigo_get_products', 'siigo_get_product', 'siigo_search_products', 'siigo_get_customers', 'siigo_get_customer', 'siigo_search_customers', 'siigo_get_quotations', 'siigo_get_quotation', 'siigo_get_warehouses', 'siigo_get_price_lists', 'siigo_get_document_types', 'siigo_get_taxes', 'siigo_get_payment_types', 'siigo_get_cost_centers', 'siigo_get_users', 'siigo_get_cities', 'siigo_get_id_types', 'siigo_get_fiscal_responsibilities', 'siigo_get_fixed_assets', 'siigo_get_expenses', 'siigo_get_misc_income'],
+  ventas: ['siigo_get_products', 'siigo_get_product', 'siigo_search_products', 'siigo_get_customers', 'siigo_get_customer', 'siigo_search_customers', 'siigo_get_quotations', 'siigo_get_quotation', 'siigo_create_quotation', 'siigo_update_quotation', 'siigo_get_warehouses', 'siigo_get_price_lists', 'siigo_get_document_types', 'siigo_get_taxes', 'siigo_get_payment_types', 'siigo_get_cost_centers', 'siigo_get_users', 'siigo_get_cities', 'siigo_get_id_types', 'siigo_get_fiscal_responsibilities', 'siigo_get_fixed_assets', 'siigo_get_expenses', 'siigo_get_misc_income'],
+  bodega: ['siigo_get_products', 'siigo_get_product', 'siigo_search_products', 'siigo_get_customers', 'siigo_get_customer', 'siigo_search_customers', 'siigo_create_product', 'siigo_update_product', 'siigo_create_customer', 'siigo_update_customer', 'siigo_get_quotations', 'siigo_get_quotation', 'siigo_get_warehouses', 'siigo_get_price_lists', 'siigo_get_document_types', 'siigo_get_taxes', 'siigo_get_payment_types', 'siigo_get_cost_centers', 'siigo_get_users', 'siigo_get_cities', 'siigo_get_id_types', 'siigo_get_fiscal_responsibilities', 'siigo_get_fixed_assets', 'siigo_get_expenses', 'siigo_get_misc_income'],
+  inventario: ['siigo_get_products', 'siigo_get_product', 'siigo_search_products', 'siigo_get_customers', 'siigo_get_customer', 'siigo_search_customers', 'siigo_create_product', 'siigo_update_product', 'siigo_create_customer', 'siigo_update_customer', 'siigo_get_quotations', 'siigo_get_quotation', 'siigo_get_warehouses', 'siigo_get_price_lists', 'siigo_get_document_types', 'siigo_get_taxes', 'siigo_get_payment_types', 'siigo_get_cost_centers', 'siigo_get_users', 'siigo_get_cities', 'siigo_get_id_types', 'siigo_get_fiscal_responsibilities', 'siigo_get_fixed_assets', 'siigo_get_expenses', 'siigo_get_misc_income'],
+  administrador: ['*'] // all tools
+};
+
+const requiresConfirmation = (toolName) => {
+  return toolName.includes('create') || toolName.includes('update') || toolName.includes('delete');
+};
+
+const authMiddleware = async (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) return res.status(401).json({ error: 'No authorization header' });
+
+  const token = authHeader.replace('Bearer ', '');
+  const { data: { user }, error } = await supabase.auth.getUser(token);
+  
+  if (error || !user) {
+    return res.status(401).json({ error: 'Invalid token' });
+  }
+
+  req.user = user;
+  
+  // Get role
+  const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single();
+  req.role = profile?.role || 'solo_lectura';
+
+  next();
+};
+
+const convertMcpToolToOpenAITool = (tool) => {
+  return {
+    type: 'function',
+    function: {
+      name: tool.name,
+      description: tool.description || `Siigo tool: ${tool.name}`,
+      parameters: tool.inputSchema
+    }
+  };
+};
+
+const SYSTEM_PROMPT = `Eres el "Asistente Ferriperfiles", un experto operativo integrado en el panel de administración. 
+Ayudas al equipo a consultar y operar Siigo a través de herramientas (tools).
+Responde SIEMPRE en español colombiano de forma clara, directa y profesional.
+
+Reglas críticas:
+1. No inventes datos. Si no hay resultados de Siigo, dilo.
+2. Si un usuario te pide actualizar el stock (existencias) directamente, explícale claramente que "Siigo no expone un método público (endpoint) para fijar el stock directamente. Las existencias se actualizan a través de documentos de inventario (compras, ventas, ajustes)."
+3. Si creas una cotización, muestra claramente el ID y Número de cotización que retorna Siigo.
+4. Para listar productos, clientes, cotizaciones o bodegas, si obtienes una lista, muestra un resumen amigable. El frontend lo renderizará como tarjetas si la respuesta es estructurada, pero tú responde el resumen en texto.
+5. No pidas confirmación tú mismo: el sistema lo hará automáticamente si usas herramientas de escritura.
+`;
+
+router.post('/', authMiddleware, async (req, res) => {
+  const { message, history, conversation_id, confirmed_action } = req.body;
+  
+  if (message && message.length > 4000) {
+    return res.status(400).json({ error: 'El mensaje es demasiado largo.' });
+  }
+
+  try {
+    const tools = await mcpManager.listTools();
+    const userRole = req.role;
+    
+    // Filter tools by role
+    const allowedTools = tools.filter(t => 
+      rolePermissions[userRole]?.includes('*') || rolePermissions[userRole]?.includes(t.name)
+    );
+
+    // If there is a confirmed action from the user, execute it directly
+    if (confirmed_action) {
+      const { tool_name, tool_args } = confirmed_action;
+      
+      // Validate again to be sure
+      if (!rolePermissions[userRole]?.includes('*') && !rolePermissions[userRole]?.includes(tool_name)) {
+        return res.status(403).json({ error: 'No tienes permiso para ejecutar esta acción.' });
+      }
+
+      console.log(`Executing confirmed action: ${tool_name}`);
+      let result;
+      try {
+        result = await mcpManager.callTool(tool_name, tool_args);
+      } catch (err) {
+        console.error(`Error in tool ${tool_name}:`, err);
+        return res.json({
+          role: 'assistant',
+          content: `Hubo un error de conexión con Siigo al intentar ejecutar la acción: ${err.message}. Por favor revisa los datos e intenta de nuevo.`
+        });
+      }
+
+      // Add to conversation
+      const conversationHistory = history || [];
+      conversationHistory.push({ role: 'assistant', content: null, tool_calls: [{ id: 'call_confirmed', type: 'function', function: { name: tool_name, arguments: JSON.stringify(tool_args) } }] });
+      conversationHistory.push({ role: 'tool', tool_call_id: 'call_confirmed', name: tool_name, content: JSON.stringify(result) });
+      
+      // Generate final response based on tool result
+      const completion = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: SYSTEM_PROMPT },
+          ...conversationHistory
+        ],
+      });
+
+      return res.json({
+        role: 'assistant',
+        content: completion.choices[0].message.content
+      });
+    }
+
+    // Normal chat flow
+    const messages = [
+      { role: 'system', content: SYSTEM_PROMPT },
+      ...(history || []),
+      { role: 'user', content: message }
+    ];
+
+    const openaiTools = allowedTools.map(convertMcpToolToOpenAITool);
+
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages,
+      tools: openaiTools.length > 0 ? openaiTools : undefined,
+      tool_choice: 'auto'
+    });
+
+    const responseMessage = completion.choices[0].message;
+
+    if (responseMessage.tool_calls) {
+      // Process tool calls
+      const toolCall = responseMessage.tool_calls[0];
+      const toolName = toolCall.function.name;
+      const toolArgs = JSON.parse(toolCall.function.arguments);
+
+      if (requiresConfirmation(toolName)) {
+        // Need user confirmation before executing
+        return res.json({
+          role: 'assistant',
+          content: 'Por favor, confirma la siguiente operación:',
+          requires_confirmation: true,
+          action_details: {
+            tool_name: toolName,
+            tool_args: toolArgs,
+            summary: `Vas a ejecutar la acción de escritura: **${toolName}** en Siigo.`
+          }
+        });
+      } else {
+        // Safe to execute immediately (Read-only)
+        try {
+          const result = await mcpManager.callTool(toolName, toolArgs);
+          
+          messages.push(responseMessage);
+          messages.push({
+            role: 'tool',
+            tool_call_id: toolCall.id,
+            name: toolName,
+            content: JSON.stringify(result)
+          });
+
+          const finalCompletion = await openai.chat.completions.create({
+            model: 'gpt-4o-mini',
+            messages,
+          });
+
+          return res.json({
+            role: 'assistant',
+            content: finalCompletion.choices[0].message.content,
+            executed_tool: toolName
+          });
+
+        } catch (err) {
+          console.error(`Error in tool ${toolName}:`, err);
+          return res.json({
+            role: 'assistant',
+            content: `Lo siento, hubo un problema al consultar Siigo (${err.message}). Intenta más tarde.`
+          });
+        }
+      }
+    }
+
+    return res.json({
+      role: 'assistant',
+      content: responseMessage.content
+    });
+
+  } catch (error) {
+    console.error('Chat API Error:', error);
+    res.status(500).json({ error: 'Internal server error during chat processing' });
+  }
+});
+
+module.exports = router;

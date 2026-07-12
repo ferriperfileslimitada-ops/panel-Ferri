@@ -48,6 +48,16 @@ export const Layout: React.FC<PropsWithChildren> = ({ children }) => {
           Herramientas
         </h3>
         <Link
+          to="/asistente"
+          className={buttonVariants({
+            variant: "ghost",
+            className: "w-full justify-start mb-1"
+          })}
+        >
+          <span className="h-5 w-5 mr-3 text-xl leading-none">🤖</span>
+          Asistente AI
+        </Link>
+        <Link
           to="/herramientas/procesar-factura"
           className={buttonVariants({
             variant: "ghost",
