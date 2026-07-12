@@ -1,5 +1,5 @@
 import { useTable, useUpdate, useCreate } from "@refinedev/core";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
@@ -17,7 +17,7 @@ export const Productos = () => {
   const [showCreate, setShowCreate] = useState(false);
   const [newProduct, setNewProduct] = useState({ sku: "", nombre: "", precio: "", stock: "" });
 
-  const { tableQuery } = useTable({
+  const { tableQuery, currentPage, setCurrentPage, pageCount, setFilters } = useTable({
     resource: "productos",
     pagination: { pageSize: 20 },
     sorters: { initial: [{ field: "stock", order: "asc" }] },
@@ -27,20 +27,35 @@ export const Productos = () => {
   const { mutate: updateProduct } = useUpdate();
   const { mutate: createProduct } = useCreate();
 
-  // Filtrado local case-insensitive
-  const filteredData = useMemo(() => {
-    if (!data?.data) return [];
-    if (!searchTerm.trim()) return data.data;
+  // Server-side filtering with debounce
+  const [debouncedSearch, setDebouncedSearch] = useState("");
 
-    const term = searchTerm.toLowerCase().trim();
-    return data.data.filter((p: any) => {
-      const nombre = String(p.nombre || "").toLowerCase();
-      const sku = String(p.sku || "").toLowerCase();
-      const precio = String(p.precio || "");
-      const stock = String(p.stock || "");
-      return nombre.includes(term) || sku.includes(term) || precio.includes(term) || stock.includes(term);
-    });
-  }, [data?.data, searchTerm]);
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(searchTerm);
+    }, 400);
+    return () => clearTimeout(handler);
+  }, [searchTerm]);
+
+  useEffect(() => {
+    if (!debouncedSearch.trim()) {
+      setFilters([], "replace");
+    } else {
+      setFilters([
+        {
+          operator: "or",
+          value: [
+            { field: "nombre", operator: "contains", value: debouncedSearch.trim() },
+            { field: "code", operator: "contains", value: debouncedSearch.trim() },
+          ],
+        },
+      ], "replace");
+      setCurrentPage(1); // Reset page on search
+    }
+  }, [debouncedSearch, setFilters, setCurrentPage]);
+
+  const filteredData = data?.data || [];
+  const totalProductos = data?.total || 0;
 
   const handleEditClick = (producto: any) => {
     setEditingId(producto.supa_id);
@@ -163,7 +178,7 @@ export const Productos = () => {
                 ) : (
                   filteredData.map((producto: any) => (
                     <TableRow key={producto.supa_id}>
-                      <TableCell className="font-medium">{producto.sku}</TableCell>
+                      <TableCell className="font-medium">{producto.code || producto.sku || "-"}</TableCell>
                       <TableCell>{producto.nombre}</TableCell>
                       <TableCell className="text-right">
                         {editingId && editingId === producto.supa_id ? (
@@ -229,6 +244,33 @@ export const Productos = () => {
               </TableBody>
             </Table>
           </div>
+
+          {/* Paginación */}
+          {pageCount > 1 && (
+            <div className="flex items-center justify-between gap-4 pt-4 mt-4">
+              <p className="text-xs text-muted-foreground">
+                Página {currentPage} de {pageCount} ({totalProductos} productos en total)
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(currentPage - 1)}
+                  disabled={currentPage === 1}
+                >
+                  Anterior
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(currentPage + 1)}
+                  disabled={currentPage === pageCount}
+                >
+                  Siguiente
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 

@@ -84,7 +84,7 @@ export const CotizacionCreate = () => {
 
   const { options: productoOptions, query: productoQuery, onSearch: onSearchProducto } = useSelect({
     resource: "productos",
-    optionLabel: "sku",
+    optionLabel: "code",
     optionValue: "sligo_id",
     sorters: [{ field: "nombre", order: "asc" }],
     pagination: { pageSize: 50 },
@@ -93,7 +93,7 @@ export const CotizacionCreate = () => {
       {
         operator: "or",
         value: [
-          { field: "sku", operator: "contains", value },
+          { field: "code", operator: "contains", value },
           { field: "nombre", operator: "contains", value },
         ],
       },

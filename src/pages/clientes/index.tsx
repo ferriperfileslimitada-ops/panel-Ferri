@@ -1,5 +1,5 @@
 import { useTable } from "@refinedev/core";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
@@ -18,7 +18,7 @@ export const Clientes = () => {
   const [isCreatingClient, setIsCreatingClient] = useState(false);
   const [newClientData, setNewClientData] = useState({ name: "", identification: "", email: "", telefono: "", city: "" });
 
-  const { tableQuery } = useTable({
+  const { tableQuery, currentPage, setCurrentPage, pageCount, setFilters } = useTable({
     resource: "clientes",
     pagination: { pageSize: 20 },
     sorters: { initial: [{ field: "name", order: "asc" }] },
@@ -26,24 +26,37 @@ export const Clientes = () => {
 
   const { data, isLoading: isPending } = tableQuery;
 
-  // Filtrado local case-insensitive
-  const filteredData = useMemo(() => {
-    if (!data?.data) return [];
-    if (!searchTerm.trim()) return data.data;
+  // Server-side filtering with debounce
+  const [debouncedSearch, setDebouncedSearch] = useState("");
 
-    const term = searchTerm.toLowerCase().trim();
-    return data.data.filter((c: any) => {
-      const name = String(c.name || "").toLowerCase();
-      const identification = String(c.identification || "").toLowerCase();
-      const email = String(c.email || "").toLowerCase();
-      const city = String(c.city || "").toLowerCase();
-      const telefono = String(c.Telefono || c.telefono || "").toLowerCase();
-      const address = String(c.address || "").toLowerCase();
-      return name.includes(term) || identification.includes(term) || email.includes(term) || city.includes(term) || telefono.includes(term) || address.includes(term);
-    });
-  }, [data?.data, searchTerm]);
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(searchTerm);
+    }, 400);
+    return () => clearTimeout(handler);
+  }, [searchTerm]);
 
-  const totalClientes = data?.data?.length || 0;
+  useEffect(() => {
+    if (!debouncedSearch.trim()) {
+      setFilters([], "replace");
+    } else {
+      setFilters([
+        {
+          operator: "or",
+          value: [
+            { field: "name", operator: "contains", value: debouncedSearch.trim() },
+            { field: "identification", operator: "contains", value: debouncedSearch.trim() },
+            { field: "email", operator: "contains", value: debouncedSearch.trim() },
+            { field: "city", operator: "contains", value: debouncedSearch.trim() },
+          ],
+        },
+      ], "replace");
+      setCurrentPage(1); // Reset page on search
+    }
+  }, [debouncedSearch, setFilters, setCurrentPage]);
+
+  const filteredData = data?.data || [];
+  const totalClientes = data?.total || 0;
 
   const handleCreateClient = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -167,6 +180,33 @@ export const Clientes = () => {
               </TableBody>
             </Table>
           </div>
+
+          {/* Paginación */}
+          {pageCount > 1 && (
+            <div className="flex items-center justify-between gap-4 pt-4 mt-4">
+              <p className="text-xs text-muted-foreground">
+                Página {currentPage} de {pageCount} ({totalClientes} clientes en total)
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(currentPage - 1)}
+                  disabled={currentPage === 1}
+                >
+                  Anterior
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(currentPage + 1)}
+                  disabled={currentPage === pageCount}
+                >
+                  Siguiente
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
