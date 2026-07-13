@@ -2,6 +2,10 @@ const express = require('express');
 const { createClient } = require('@supabase/supabase-js');
 const { OpenAI } = require('openai');
 const orbitMcpClient = require('./orbit-mcp-client');
+const {
+  areUnsafeDirectSiigoWritesEnabled,
+  isMcpToolReadOnly,
+} = require('./siigo-write-gate');
 const logger = require('./logger');
 
 const router = express.Router();
@@ -84,6 +88,10 @@ router.post('/', authMiddleware, async (req, res) => {
     const allowedTools = tools.filter(t => {
       const hasPermission = rolePermissions[userRole]?.includes('*') || rolePermissions[userRole]?.includes(t.name);
       if (!hasPermission) return false;
+
+      if (!areUnsafeDirectSiigoWritesEnabled() && !isMcpToolReadOnly(t)) {
+        return false;
+      }
       
       // Exclude read-only MCP tools for products and clients to force using local DB
       const isReadOnlyMcpProductOrClient = 
@@ -100,6 +108,13 @@ router.post('/', authMiddleware, async (req, res) => {
     // If there is a confirmed action from the user, execute it directly
     if (confirmed_action) {
       const { tool_name, tool_args } = confirmed_action;
+
+      if (!areUnsafeDirectSiigoWritesEnabled()) {
+        return res.status(503).json({
+          error: 'Las acciones de escritura hacia Siigo están desactivadas temporalmente.',
+          code: 'UNSAFE_DIRECT_SIIGO_WRITES_DISABLED',
+        });
+      }
       
       // Validate again to be sure
       if (!rolePermissions[userRole]?.includes('*') && !rolePermissions[userRole]?.includes(tool_name)) {

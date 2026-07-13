@@ -24,7 +24,7 @@ const transporter = nodemailer.createTransport({
   secure: false,
   auth: {
     user: process.env.MAILER_SENDER_EMAIL || 'ferriperfileslimitada@gmail.com',
-    pass: process.env.SMTP_PASSWORD || 'zuvnavosiwsiplgm',
+    pass: process.env.SMTP_PASSWORD,
   },
 });
 

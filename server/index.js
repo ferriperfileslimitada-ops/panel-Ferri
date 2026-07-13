@@ -30,11 +30,23 @@ const chatRouter = require('./chat');
 const productosRouter = require('./productos');
 const clientesRouter = require('./clientes');
 const siigoRoutes = require('./siigo-routes');
+const {
+  areUnsafeDirectSiigoWritesEnabled,
+  unsafeDirectSiigoWriteGate,
+} = require('./siigo-write-gate');
 
 app.use('/api/chat', chatLimiter, chatRouter);
-app.use('/api/productos', productosRouter);
-app.use('/api/clientes', clientesRouter);
-app.use('/api/siigo', siigoRoutes);
+app.use('/api/productos', unsafeDirectSiigoWriteGate, productosRouter);
+app.use('/api/clientes', unsafeDirectSiigoWriteGate, clientesRouter);
+app.use('/api/siigo', unsafeDirectSiigoWriteGate, siigoRoutes);
+
+app.get('/api/integrations/siigo-write-gate/health', (req, res) => {
+  const writesEnabled = areUnsafeDirectSiigoWritesEnabled();
+  res.json({
+    status: writesEnabled ? 'unsafe-direct-writes-enabled' : 'safe-read-only',
+    unsafe_direct_siigo_writes_enabled: writesEnabled,
+  });
+});
 
 
 const transporter = nodemailer.createTransport({
@@ -43,7 +55,7 @@ const transporter = nodemailer.createTransport({
   secure: false, // true for 465, false for other ports
   auth: {
     user: process.env.MAILER_SENDER_EMAIL || 'ferriperfileslimitada@gmail.com',
-    pass: process.env.SMTP_PASSWORD || 'zuvnavosiwsiplgm',
+    pass: process.env.SMTP_PASSWORD,
   },
 });
 
