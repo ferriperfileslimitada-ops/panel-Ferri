@@ -3,7 +3,7 @@ import { supabaseClient } from "@/providers/supabase-client";
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Mail, Printer } from "lucide-react";
+import { ArrowLeft, Mail, Printer, Send } from "lucide-react";
 import { toast } from "sonner";
 
 export const CotizacionShow = () => {
@@ -20,6 +20,7 @@ export const CotizacionShow = () => {
 
   const [items, setItems] = useState<any[]>([]);
   const [isSending, setIsSending] = useState(false);
+  const [isQueueingForSiigo, setIsQueueingForSiigo] = useState(false);
 
   useEffect(() => {
     if (cotizacion?.id) {
@@ -84,6 +85,33 @@ export const CotizacionShow = () => {
     }
   };
 
+  const handleApproveAndQueueForSiigo = async () => {
+    const confirmed = window.confirm(
+      "¿Apruebas enviar esta cotización a Siigo? La solicitud quedará registrada y no se enviará dos veces."
+    );
+    if (!confirmed) return;
+
+    setIsQueueingForSiigo(true);
+    try {
+      const { error } = await supabaseClient.rpc("queue_approved_quotation_for_siigo", {
+        p_quotation_id: cotizacion.id,
+      });
+
+      if (error) throw error;
+
+      toast.success("Cotización aprobada y encolada para envío a Siigo.");
+      await query.refetch();
+    } catch (error: any) {
+      console.error(error);
+      toast.error(error.message || "No se pudo aprobar la cotización para Siigo.");
+    } finally {
+      setIsQueueingForSiigo(false);
+    }
+  };
+
+  const isSyncedWithSiigo = cotizacion.siigo_sync_status === "synced";
+  const isAwaitingSiigo = ["queued", "processing"].includes(cotizacion.siigo_sync_status);
+
   return (
     <div className="flex flex-col gap-6 max-w-4xl mx-auto pb-10">
       <div className="flex items-center justify-between">
@@ -97,6 +125,19 @@ export const CotizacionShow = () => {
           </div>
         </div>
         <div className="flex gap-2">
+          {!isSyncedWithSiigo && (
+            <Button
+              onClick={handleApproveAndQueueForSiigo}
+              disabled={isQueueingForSiigo || isAwaitingSiigo}
+            >
+              <Send className="mr-2 h-4 w-4" />
+              {isQueueingForSiigo
+                ? "Aprobando..."
+                : isAwaitingSiigo
+                  ? "En espera de Siigo"
+                  : "Aprobar y enviar a Siigo"}
+            </Button>
+          )}
           <Button variant="outline" onClick={() => window.print()}>
             <Printer className="mr-2 h-4 w-4" /> Imprimir
           </Button>
@@ -111,6 +152,18 @@ export const CotizacionShow = () => {
           Este cliente no tiene correo electrónico registrado. No se puede enviar por correo.
         </div>
       )}
+
+      <div className="rounded-md border bg-muted/40 px-4 py-3 text-sm">
+        {isSyncedWithSiigo ? (
+          <span>Sincronizada con Siigo{cotizacion.siigo_quotation_number ? `: ${cotizacion.siigo_quotation_number}` : "."}</span>
+        ) : isAwaitingSiigo ? (
+          <span>La cotización fue aprobada y está esperando procesamiento seguro en Siigo.</span>
+        ) : cotizacion.siigo_sync_status === "failed" ? (
+          <span className="text-destructive">El último envío a Siigo falló. Puedes aprobarla nuevamente para reintentar.</span>
+        ) : (
+          <span>Esta cotización aún no ha sido aprobada para enviarse a Siigo.</span>
+        )}
+      </div>
 
       <Card className="print:shadow-none print:border-none">
         <CardContent className="p-8">

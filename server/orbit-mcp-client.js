@@ -20,20 +20,22 @@ class OrbitMCPClientManager {
         const { Client } = await import('@modelcontextprotocol/sdk/client/index.js');
         const { StreamableHTTPClientTransport } = await import('@modelcontextprotocol/sdk/client/streamableHttp.js');
 
-        const urlStr = process.env.ORBIT_MCP_URL || 'https://siigo.adsbigger.cloud/mcp/3334ff19-664c-442d-ad0f-a9308c8d4cab';
+        const urlStr = process.env.ORBIT_MCP_URL;
         const apiKey = process.env.ORBIT_MCP_API_KEY;
 
         if (!urlStr) {
           throw new Error('ORBIT_MCP_URL is not configured');
         }
 
+        if (!apiKey) {
+          throw new Error('ORBIT_MCP_API_KEY is not configured');
+        }
+
         const headers = {
           'Content-Type': 'application/json'
         };
         
-        if (apiKey) {
-          headers['Authorization'] = `Bearer ${apiKey}`;
-        }
+        headers['Authorization'] = `Bearer ${apiKey}`;
 
         const url = new URL(urlStr);
 

@@ -25,11 +25,11 @@ const chatLimiter = rateLimit({
 // Serve React static files from dist folder
 app.use(express.static(path.join(__dirname, '../dist')));
 
-const siigo = require('./siigo');
 const chatRouter = require('./chat');
 const productosRouter = require('./productos');
 const clientesRouter = require('./clientes');
 const siigoRoutes = require('./siigo-routes');
+const { router: siigoOutboxWorker } = require('./siigo-outbox-worker');
 const {
   areUnsafeDirectSiigoWritesEnabled,
   unsafeDirectSiigoWriteGate,
@@ -39,6 +39,7 @@ app.use('/api/chat', chatLimiter, chatRouter);
 app.use('/api/productos', unsafeDirectSiigoWriteGate, productosRouter);
 app.use('/api/clientes', unsafeDirectSiigoWriteGate, clientesRouter);
 app.use('/api/siigo', unsafeDirectSiigoWriteGate, siigoRoutes);
+app.use('/api/integrations/siigo/outbox', siigoOutboxWorker);
 
 app.get('/api/integrations/siigo-write-gate/health', (req, res) => {
   const writesEnabled = areUnsafeDirectSiigoWritesEnabled();
@@ -379,48 +380,6 @@ app.post('/api/despacho-status', async (req, res) => {
   } catch (error) {
     console.error('Error enviando correo de estado:', error);
     res.status(500).json({ error: 'Error enviando correo de estado' });
-  }
-});
-
-// SIIGO ENDPOINTS
-
-app.post('/api/siigo/customers', async (req, res) => {
-  try {
-    const data = await siigo.createSiigoCustomer(req.body);
-    res.status(200).json(data);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.put('/api/siigo/customers/:id', async (req, res) => {
-  try {
-    const data = await siigo.updateSiigoCustomer(req.params.id, req.body);
-    res.status(200).json(data);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.post('/api/siigo/quotations', async (req, res) => {
-  try {
-    const data = await siigo.createSiigoQuotation(req.body);
-    res.status(200).json(data);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.put('/api/siigo/quotations/:id', async (req, res) => {
-  try {
-    const data = await siigo.updateSiigoQuotation(req.params.id, req.body);
-    res.status(200).json(data);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: error.message });
   }
 });
 

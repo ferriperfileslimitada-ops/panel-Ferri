@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "node --test siigo-write-gate.test.js"
+    "test": "node --test siigo-write-gate.test.js siigo-outbox-worker.test.js"
   },
   "keywords": [],
   "author": "",

@@ -207,48 +207,8 @@ export const CotizacionCreate = () => {
     try {
       let finalClientId = data.cliente_id;
 
-      // 1. Integración Siigo (Crear Cotización)
-      let siigoQuoteNumber = null;
-      let siigoQuoteId = null;
-
-      try {
-        const clientDoc = (clienteQuery.data?.data as any[])?.find(c => c.id === finalClientId)?.identification;
-        
-        const siigoItems = data.items.map(i => {
-           const prod = (productoQuery.data?.data as any[])?.find(p => p.sligo_id === i.producto_id);
-           return {
-             code: prod?.sku || i.producto_id,
-             quantity: i.cantidad,
-             price: i.precio_unitario
-           }
-        });
-
-        const siigoQuoteUrl = import.meta.env.DEV ? "http://localhost:3001/api/siigo/quotations" : "/api/siigo/quotations";
-        const res = await fetch(siigoQuoteUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-             document: { id: 1 }, // Siigo Cloud document ID para Cotizacion, usualmente 1, pero puede variar por cuenta
-             date: new Date().toISOString().split('T')[0],
-             customer: {
-               identification: clientDoc
-             },
-             items: siigoItems
-          })
-        });
-
-        if (res.ok) {
-           const siigoData = await res.json();
-           siigoQuoteNumber = siigoData.name; // Ej: CQ-23
-           siigoQuoteId = siigoData.id;
-        } else {
-           console.error("Siigo Quote Error:", await res.text());
-        }
-      } catch (err) {
-        console.error("Siigo Quote Fetch Error:", err);
-      }
-
-      // 1.5. Insertar Cotización (Master)
+      // La cotización se guarda localmente. Su envío a Siigo requiere una
+      // aprobación explícita desde la vista de detalle y pasa por el outbox.
       const insertData: any = {
           cliente_id: finalClientId,
           vendedor_id: user?.id,
@@ -258,11 +218,8 @@ export const CotizacionCreate = () => {
           valida_hasta: data.valida_hasta,
           subtotal: subtotal,
           iva: iva,
-          total: total,
-          siigo_id: siigoQuoteId
+          total: total
       };
-      // Si recibimos un número de Siigo, lo guardamos para reemplazar el serial por defecto
-      if (siigoQuoteNumber) insertData.numero = siigoQuoteNumber;
 
       const { data: cotizacion, error: cotError } = await supabaseClient
         .from("cotizaciones")

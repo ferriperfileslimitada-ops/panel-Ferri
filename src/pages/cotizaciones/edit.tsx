@@ -41,7 +41,6 @@ export const CotizacionEdit = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCreatingClient, setIsCreatingClient] = useState(false);
   const [isLoadingData, setIsLoadingData] = useState(true);
-  const [quoteSiigoId, setQuoteSiigoId] = useState<string | null>(null);
   
   // Combobox states
   const [openCliente, setOpenCliente] = useState(false);
@@ -126,9 +125,6 @@ export const CotizacionEdit = () => {
 
           if (itemsError) throw itemsError;
 
-          if (cotizacion.siigo_id) {
-            setQuoteSiigoId(cotizacion.siigo_id);
-          }
 
           // Resetear form
           reset({
@@ -288,41 +284,8 @@ export const CotizacionEdit = () => {
     try {
       let finalClientId = data.cliente_id;
 
-      // 1. Integración Siigo (Actualizar Cotización)
-      if (quoteSiigoId) {
-        try {
-          const clientDoc = (clienteQuery.data?.data as any[])?.find(c => c.id === finalClientId)?.identification;
-          
-          const siigoItems = data.items.map(i => {
-             const prod = (productoQuery.data?.data as any[])?.find(p => p.sligo_id === i.producto_id);
-             return {
-               code: prod?.sku || i.producto_id,
-               quantity: i.cantidad,
-               price: i.precio_unitario
-             }
-          });
-
-          const siigoQuoteUrl = import.meta.env.DEV ? `http://localhost:3001/api/siigo/quotations/${quoteSiigoId}` : `/api/siigo/quotations/${quoteSiigoId}`;
-          const res = await fetch(siigoQuoteUrl, {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-               document: { id: 1 }, 
-               date: new Date().toISOString().split('T')[0],
-               customer: { identification: clientDoc },
-               items: siigoItems
-            })
-          });
-
-          if (!res.ok) {
-             console.error("Siigo Quote Update Error:", await res.text());
-          }
-        } catch (err) {
-          console.error("Siigo Quote Update Fetch Error:", err);
-        }
-      }
-
-      // 1.5. Actualizar Cotización (Master)
+      // Las actualizaciones permanecen locales. La versión inicial solo
+      // entrega a Siigo cotizaciones aprobadas mediante integration_outbox.
       const { error: cotError } = await supabaseClient
         .from("cotizaciones")
         .update({
